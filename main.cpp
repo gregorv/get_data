@@ -77,10 +77,11 @@ int main(int argc, char **argv) {
     b->SetTranspMode(1);
     b->EnableTrigger(1, 0);
     b->SetTriggerSource(1); // CH1
-    
+//     b->SetTriggerDelayNs(int(1024/0.69));
+    b->SetTriggerDelayPercent(100);
+    if(verbose) std::cout << "Trigger delay " << b->GetTriggerDelayNs() << "ns, " << b->GetTriggerDelay() << std::endl;
+
     b->SetTriggerLevel(-0.01, true); // (V), pos. edge == false
-    b->SetTriggerDelayNs(0); // trigger delay (ns)
-    
     if(verbose) std::cout << "Sampling Rate " << b->GetFrequency() << " GSp/s" << std::endl;
     if(verbose) std::cout << num_samples << " to be taken" << std::endl;
     for(unsigned int i=0; i<num_samples; i++) {
