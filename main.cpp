@@ -4,6 +4,9 @@
 #include <drs.h>
 #include <unistd.h>
 #include <getopt.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/errno.h>
 
 using namespace std;
 
@@ -38,13 +41,14 @@ int main(int argc, char **argv) {
     int optchar = -1;
     string output_directory("./");
     string output_file_prefix("sample_");
-    unsigned int num_samples = 10;
+    unsigned int num_frames = 10;
     bool binary_output = false;
-    while((optchar = getopt(argc, argv, "d:p:n:hv")) != -1) {
+    bool mode_2048 = false;
+    while((optchar = getopt(argc, argv, "12bd:p:n:hv")) != -1) {
         if(optchar == '?') return 1;
         else if(optchar == 'h') {
             std::cout << "Usage: " << argv[0]
-                      << "[-d OUTPUT_DIR] [-p PREFIX] [-n NUM_SAMPLES] [-vbh]\n\nThis *is* usefull help!"
+                      << "[-d OUTPUT_DIR] [-p PREFIX] [-n NUM_SAMPLES] [-v12bh]\n\nThis *is* usefull help!"
                       << std::endl;
             return 1;
         }
@@ -52,14 +56,22 @@ int main(int argc, char **argv) {
         else if(optchar == 'p') output_file_prefix = optarg;
         else if(optchar == 'n') {
             istringstream in(optarg);
-            in >> num_samples;
+            in >> num_frames;
         }
         else if(optchar == 'v') verbose = true;
         else if(optchar == 'b') binary_output = true;
+        else if(optchar == '2') mode_2048 = true;
+        else if(optchar == '1') mode_2048 = false;
     }
 
     if(output_directory[output_directory.length()-1] != '/')
         output_directory += '/';
+    if(mkdir(output_directory.c_str(), S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH)) {
+        if(errno != EEXIST) {
+            std::cerr << "Cannot create output directory" << std::endl;
+            return 1;
+        }
+    }
 
     DRS* drs = new DRS();
     if(drs->GetNumberOfBoards() > 0 && verbose)
@@ -90,14 +102,25 @@ int main(int argc, char **argv) {
 
     b->SetTriggerLevel(-0.01, true); // (V), pos. edge == false
 
-    b->SetChannelConfig(0, 1, 4);
+    // 2048 sample mode
+    if(mode_2048) {
+        b->SetChannelConfig(0, 1, 4);
+        if(verbose) {
+            std::cout << "2048 sample mode, channel cascading " << board->GetChannelCascading() << std::endl;
+        }
+    }
+    else if(verbose) {
+        std::cout << "1024 sample mode" << std::endl;
+    }
+        
 
     if(verbose) std::cout << "Sampling Rate " << b->GetFrequency() << " GSp/s" << std::endl;
-    if(verbose) std::cout << "Record " << num_samples << " frames" << std::endl;
-    for(unsigned int i=0; i<num_samples; i++) {
+    if(verbose) std::cout << "Record " << num_frames << " frames" << std::endl;
+    int num_samples = mode_2048?2048:1024;
+    for(unsigned int i=0; i<num_frames; i++) {
         if(verbose) {
             if(i % 10 == 0)
-                std::cout << "\33[2K\rSample " << i << " of " << num_samples << std::flush;
+                std::cout << "\33[2K\rSample " << i << " of " << num_frames << std::flush;
         }
         ostringstream fname;
         fname << output_directory << output_file_prefix << i+1;
@@ -105,20 +128,20 @@ int main(int argc, char **argv) {
         float time[2048];
         float data[2048];
         board->GetTime(0, board->GetTriggerCell(0), time);
-        board->GetWave(0, 0, data);
+        board->GetWave(0, mode_2048? 1 : 0, data);
         if(binary_output) {
             fname << ".dat";
             FILE* f = fopen(fname.str().c_str(), "wb");
             fwrite("#BIN\n", strlen("#BIN\n"), 1, f);
-            fwrite(&time, sizeof(time), 1, f);
-            fwrite(&data, sizeof(data), 1, f);
+            fwrite(&time, sizeof(float), num_samples, f);
+            fwrite(&data, sizeof(float), num_samples, f);
             fclose(f);
         }
         else {
             fname << ".csv";
             FILE* f = fopen(fname.str().c_str(), "w");
             fwrite("#TXT\n", strlen("#TXT\n"), 1, f);
-            for(int i=0; i<2048; i++) {
+            for(int i=0; i<num_samples; i++) {
                 fprintf(f, "%f", time[i]);
                 fprintf(f, " %f", data[i]);
                 fprintf(f, "\n");
