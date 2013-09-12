@@ -17,6 +17,12 @@ struct sample
     float data[8][1024];
 };
 
+void captureSample() {
+    board->StartDomino();
+    while(board->IsBusy());
+    board->TransferWaves();
+}
+
 void getSample(sample& s) {
     board->StartDomino();
     while(board->IsBusy());
@@ -64,6 +70,7 @@ int main(int argc, char **argv) {
     }
     DRSBoard* b = board = drs->GetBoard(0);
     std::cout << "Board type " << b->GetBoardType() << std::endl;
+    std::cout << "DRS type " << b->GetDRSType() << std::endl;
     if(b->GetBoardType() != 8) {
         std::cerr << "DRS4 Eval Board required!" << std::endl;
         return 1;
@@ -82,32 +89,47 @@ int main(int argc, char **argv) {
     if(verbose) std::cout << "Trigger delay " << b->GetTriggerDelayNs() << "ns, " << b->GetTriggerDelay() << std::endl;
 
     b->SetTriggerLevel(-0.01, true); // (V), pos. edge == false
+
+    b->SetChannelConfig(0, 1, 4);
+
     if(verbose) std::cout << "Sampling Rate " << b->GetFrequency() << " GSp/s" << std::endl;
-    if(verbose) std::cout << num_samples << " to be taken" << std::endl;
+    if(verbose) std::cout << "Record " << num_samples << " frames" << std::endl;
     for(unsigned int i=0; i<num_samples; i++) {
-        sample s;
+        if(verbose) {
+            if(i % 10 == 0)
+                std::cout << "\33[2K\rSample " << i << " of " << num_samples << std::flush;
+        }
         ostringstream fname;
         fname << output_directory << output_file_prefix << i+1;
-        getSample(s);
+        captureSample();
+        float time[2048];
+        float data[2048];
+        board->GetTime(0, board->GetTriggerCell(0), time);
+        board->GetWave(0, 0, data);
         if(binary_output) {
             fname << ".dat";
             FILE* f = fopen(fname.str().c_str(), "wb");
-            fwrite(&s, sizeof(s), 1, f);
+            fwrite("#BIN\n", strlen("#BIN\n"), 1, f);
+            fwrite(&time, sizeof(time), 1, f);
+            fwrite(&data, sizeof(data), 1, f);
             fclose(f);
         }
         else {
             fname << ".csv";
             FILE* f = fopen(fname.str().c_str(), "w");
-            for(int i=0; i<1024; i++) {
-                fprintf(f, "%f", s.time[i]);
-                for(int ch=0; ch<8; ch++)
-                    fprintf(f, " %f", s.data[ch][i]);
+            fwrite("#TXT\n", strlen("#TXT\n"), 1, f);
+            for(int i=0; i<2048; i++) {
+                fprintf(f, "%f", time[i]);
+                fprintf(f, " %f", data[i]);
                 fprintf(f, "\n");
             }
             fclose(f);
         }
     }
-    
+    if(verbose) {
+        std::cout << "\33[2K\rDone reading samples" << std::endl;
+    }
+
     delete drs;
     return 0;
 }
