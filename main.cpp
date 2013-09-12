@@ -51,14 +51,14 @@ int main(int argc, char **argv) {
         else if(optchar == 'v') verbose = true;
         else if(optchar == 'b') binary_output = true;
     }
-    
+
     if(output_directory[output_directory.length()-1] != '/')
         output_directory += '/';
-    
+
     DRS* drs = new DRS();
     if(drs->GetNumberOfBoards() > 0 && verbose)
         std::cout << "DRS Eval boards found, using first one" << std::endl;
-    else {
+    else if(drs->GetNumberOfBoards() == 0) {
         std::cerr << "No DRS Eval board can be accessed, aborting!" << std::endl;
         return 1;
     }
@@ -72,7 +72,7 @@ int main(int argc, char **argv) {
     b->Init();
     b->SetFrequency(0.68, true); // sampling freq in GHz
     b->SetInputRange(0);
-    
+
     // trigger settings
     b->SetTranspMode(1);
     b->EnableTrigger(1, 0);
