@@ -17,6 +17,7 @@ DRSBoard* board;
 
 bool verbose = false;
 bool abort_measurement = false;
+bool auto_trigger = false;
 
 struct sample
 {
@@ -35,6 +36,8 @@ struct dat_header {
 
 void captureSample() {
     board->StartDomino();
+    if(auto_trigger)
+        board->SoftTrigger();
     while(board->IsBusy() && !abort_measurement);
     board->TransferWaves();
 }
@@ -63,10 +66,10 @@ int main(int argc, char **argv) {
     unsigned int num_frames = 10;
     bool binary_output = false;
     bool mode_2048 = false;
-    bool auto_trigger = false;
+//     bool auto_trigger = false;
     bool compress_data = false;
     int compression_level = 9;
-    while((optchar = getopt(argc, argv, ":12bd:p:n:hvf:c:")) != -1) {
+    while((optchar = getopt(argc, argv, "12bd:p:n:hvf:cl:a")) != -1) {
         if(optchar == '?') return 1;
         else if(optchar == 'h') {
             std::cout << "Usage: " << argv[0]
@@ -134,16 +137,18 @@ int main(int argc, char **argv) {
     b->SetFrequency(0.68, true); // sampling freq in GHz
     b->SetInputRange(0);
 
-    // trigger settings
-    b->SetTranspMode(1);
-    b->EnableTrigger(1, 0);
-    b->SetTriggerSource(1); // CH1
-//     b->SetTriggerDelayNs(int(1024/0.69));
-    b->SetTriggerDelayPercent(100);
-    if(verbose) std::cout << "Trigger delay " << b->GetTriggerDelayNs() << "ns, " << b->GetTriggerDelay() << std::endl;
+    if(!auto_trigger) {
+        // trigger settings
+        b->SetTranspMode(1);
+        b->EnableTrigger(1, 0);
+        b->SetTriggerSource(1); // CH1
+    //     b->SetTriggerDelayNs(int(1024/0.69));
+        b->SetTriggerDelayPercent(100);
+        if(verbose) std::cout << "Trigger delay " << b->GetTriggerDelayNs() << "ns, " << b->GetTriggerDelay() << std::endl;
 
-    b->SetTriggerLevel(-0.01, true); // (V), pos. edge == false
-
+        b->SetTriggerLevel(-0.01, true); // (V), pos. edge == false
+    }
+    
     // 2048 sample mode
     if(mode_2048) {
         b->SetChannelConfig(0, 1, 4);
@@ -154,9 +159,9 @@ int main(int argc, char **argv) {
     else if(verbose) {
         std::cout << "1024 sample mode" << std::endl;
     }
-    char buf[65536*8];
-    FILE* output;
-    gzFile output_compressed;
+    char buf[65536];
+    FILE* output = 0;
+    gzFile output_compressed = 0;
     struct dat_header header;
     if(single_file_output) {
         if(binary_output) {
