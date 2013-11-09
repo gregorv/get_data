@@ -10,6 +10,7 @@
 #include <sys/errno.h>
 #include <signal.h>
 #include <zlib.h>
+#include <time.h>
 
 using namespace std;
 
@@ -25,12 +26,15 @@ struct sample
     float data[8][1024];
 };
 
+#define DAT_COMPRESSED 1
+#define DAT_FREE_TRIGGER 2
+
 struct dat_header {
     char magic[5];
     uint8_t version;
     uint16_t frames_per_sample;
     uint32_t num_frames;
-    uint8_t compressed;
+    uint8_t flags;
     char reserved[7];
 };
 
@@ -61,7 +65,7 @@ void terminate(int signum) {
 int main(int argc, char **argv) {
     int optchar = -1;
     string output_directory("");
-    string output_file("data.out");
+    string output_file("");
     string output_file_prefix("sample_");
     unsigned int num_frames = 10;
     bool binary_output = false;
@@ -75,22 +79,23 @@ int main(int argc, char **argv) {
             std::cout << "Usage: " << argv[0]
                       << " [-d OUTPUT_DIR] [-f OUTPUT_FILE] [-p PREFIX] [-n NUM_FRAMES] [-v12bch]\n\n"
                       << "Command line arguments\n"
-                      << " -1             1024-samples per frame (default)\n"
-                      << " -2             2048-samples per frame\n"
-                      << " -a             Free-running mode (no trigger)\n"
-                      << " -b             binary output file\n"
-                      << " -c             Enable zlib compression (only works with single text file).\n"
-                      << " -d             Output directory (will create one file per frame!)\n"
-                      << " -f             File output (creates a single file for all frame, with meta information\n"
-                      << " -l LVL         Set compression level (default 9). Only used if -c is set\n"
-                      << " -n NUM_FRAMES  Number of frames to record\n"
-                      << " -p PREFIX      Filename prefix for directory output\n"
-                      << " -v             Verbose output\n"
+                      << " -1              1024-samples per frame (default)\n"
+                      << " -2              2048-samples per frame\n"
+                      << " -a              Free-running mode (no trigger)\n"
+                      << " -b              binary output file\n"
+                      << " -c              Enable zlib compression (only works with single text file).\n"
+                      << " -d              Output directory (will create one file per frame!)\n"
+                      << " -f              File output (creates a single file for all frame, with meta information\n"
+//                       << " -k COMMENT_VARS Add commentary variables to output file (single-file ASCII only)
+                      << " -l LVL          Set compression level (default 9). Only used if -c is set\n"
+                      << " -n NUM_FRAMES   Number of frames to record\n"
+                      << " -p PREFIX       Filename prefix for directory output\n"
+                      << " -v              Verbose output\n"
                       << std::endl;
             return 1;
         }
         else if(optchar == 'd') output_directory = optarg;
-        else if(optchar == 'f') { output_file = optarg; binary_output = true; }
+        else if(optchar == 'f') { output_file = optarg; }
         else if(optchar == 'p') output_file_prefix = optarg;
         else if(optchar == 'a') auto_trigger = true;
         else if(optchar == 'c') compress_data = true;
@@ -182,7 +187,8 @@ int main(int argc, char **argv) {
             header.magic[3] = 'A';
             header.magic[4] = '\n';
             header.version = 1;
-            header.compressed = false;
+            header.flags = 0;
+            header.flags |= auto_trigger?DAT_FREE_TRIGGER:0;
             header.frames_per_sample = mode_2048? 2048: 1024;
             header.num_frames = 0;
             fwrite(&header, sizeof(struct dat_header), 1, output);
@@ -191,7 +197,7 @@ int main(int argc, char **argv) {
             sprintf(buf,
                     "##METATEXT\n"
                     "# version_i = 1\n"
-                    "# compressed_b = %b\n"
+                    "# compressed_b = %i\n"
                     "# frames_per_sample_i = %i\n",
 //                     "# num_frames_i = %i\n
                     compress_data, mode_2048? 2048: 1024);
@@ -199,6 +205,7 @@ int main(int argc, char **argv) {
                 // write header with lvl0 compression (uncompressed)
                 output_compressed = gzopen(output_file.c_str(), "w0");
                 gzwrite(output_compressed, buf, strlen(buf));
+                gzflush(output_compressed, Z_SYNC_FLUSH);
                 // switch to specified compression level
                 gzsetparams(output_compressed, compression_level, Z_DEFAULT_STRATEGY);
             }
@@ -238,13 +245,13 @@ int main(int argc, char **argv) {
             }
             else {
                 size_t len = sprintf(buf, "##FRAME:%i\n", i);
-                if(compress_data) gzwrite(buf, len, output_compressed);
+                if(compress_data) gzwrite(output_compressed, buf, len);
                 else fwrite(buf, 1, len, output);
                 len = 0;
                 for(int i=0; i<num_samples; i++) {
                     len += sprintf(buf+len, "%f %f\n", time[i], data[i]);
                 }
-                if(compress_data) gzwrite(buf, len, output_compressed);
+                if(compress_data) gzwrite(output_compressed, buf, len);
                 else fwrite(buf, 1, len, output);
             }
         }
@@ -272,7 +279,7 @@ int main(int argc, char **argv) {
             }
         }
     }
-    if(single_file_output) {
+    if(single_file_output & binary_output) {
         rewind(output);
         header.num_frames = num_frames_written;
         fwrite(&header, sizeof(struct dat_header), 1, output);
