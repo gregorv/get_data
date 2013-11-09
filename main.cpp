@@ -104,7 +104,16 @@ int main(int argc, char **argv) {
         else if(optchar == '2') mode_2048 = true;
         else if(optchar == '1') mode_2048 = false;
     }
-    
+    if(output_file.length() == 0) {
+        char default_filename[50];
+        time_t now = time(0);
+        strftime(default_filename, sizeof(default_filename)-1, "%Y-%m-%d_%H-%M",
+            gmtime(&now)
+        );
+        output_file = default_filename;
+        if(binary_output) output_file += ".dat";
+        else output_file += ".cdt";
+    }
     bool single_file_output = (output_directory.length() == 0);
 
     if(!single_file_output) {
