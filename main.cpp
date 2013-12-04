@@ -11,6 +11,8 @@
 #include <signal.h>
 #include <zlib.h>
 #include <time.h>
+#include <vector>
+#include <assert.h>
 
 using namespace std;
 
@@ -30,12 +32,15 @@ struct sample
 #define DAT_FREE_TRIGGER 2
 
 struct dat_header {
+    /*20 byte -> 0x14*/
     char magic[5];
     uint8_t version;
     uint16_t frames_per_sample;
     uint32_t num_frames;
     uint8_t flags;
-    char reserved[7];
+    char reserved1[3];
+    uint16_t data_offset;
+    char reserved2[2];
 };
 
 void captureSample() {
@@ -63,6 +68,8 @@ void terminate(int signum) {
 }
 
 int main(int argc, char **argv) {
+    // ENSURE that the header has the correct length...
+    assert(sizeof(struct dat_header) == 20);
     int optchar = -1;
     string output_directory("");
     string output_file("");
@@ -73,19 +80,22 @@ int main(int argc, char **argv) {
 //     bool auto_trigger = false;
     bool compress_data = false;
     int compression_level = 9;
-    while((optchar = getopt(argc, argv, "12bd:p:n:hvf:cl:a")) != -1) {
+    vector<string> user_header;
+    while((optchar = getopt(argc, argv, "12bd:p:n:hvf:CH:l:a")) != -1) {
         if(optchar == '?') return 1;
         else if(optchar == 'h') {
             std::cout << "Usage: " << argv[0]
-                      << " [-d OUTPUT_DIR] [-f OUTPUT_FILE] [-p PREFIX] [-n NUM_FRAMES] [-v12bch]\n\n"
+                      << " [-d OUTPUT_DIR] [-f OUTPUT_FILE] [-p PREFIX] [-n NUM_FRAMES] [-H user_header] [-c channel] [-v12bCh]\n\n"
                       << "Command line arguments\n"
                       << " -1              1024-samples per frame (default)\n"
                       << " -2              2048-samples per frame\n"
                       << " -a              Free-running mode (no trigger)\n"
                       << " -b              binary output file\n"
-                      << " -c              Enable zlib compression (only works with single text file).\n"
+//                       << " -c channel      Set readout channel number (default = 1)\n"
+                      << " -C              Enable zlib compression (only works with single text file).\n"
                       << " -d              Output directory (will create one file per frame!)\n"
                       << " -f              File output (creates a single file for all frame, with meta information\n"
+                      << " -H user_header  Add a line to the user header\n"
 //                       << " -k COMMENT_VARS Add commentary variables to output file (single-file ASCII only)
                       << " -l LVL          Set compression level (default 9). Only used if -c is set\n"
                       << " -n NUM_FRAMES   Number of frames to record\n"
@@ -98,7 +108,7 @@ int main(int argc, char **argv) {
         else if(optchar == 'f') { output_file = optarg; }
         else if(optchar == 'p') output_file_prefix = optarg;
         else if(optchar == 'a') auto_trigger = true;
-        else if(optchar == 'c') compress_data = true;
+        else if(optchar == 'C') compress_data = true;
         else if(optchar == 'l') compression_level = atoi(optarg);
         else if(optchar == 'n') {
             istringstream in(optarg);
@@ -108,6 +118,7 @@ int main(int argc, char **argv) {
         else if(optchar == 'b') binary_output = true;
         else if(optchar == '2') mode_2048 = true;
         else if(optchar == '1') mode_2048 = false;
+        else if(optchar == 'H') user_header.push_back(optarg);
     }
     if(output_file.length() == 0) {
         char default_filename[50];
@@ -178,8 +189,17 @@ int main(int argc, char **argv) {
     gzFile output_compressed = 0;
     struct dat_header header;
     if(single_file_output) {
+        output = fopen64(output_file.c_str(), "wb");
+        string plaintext_user_header("");
+        for(vector<string>::iterator it=user_header.begin();
+            it != user_header.end();
+            it++)
+        {
+            plaintext_user_header += "# ";
+            plaintext_user_header += *it;
+            plaintext_user_header += "\n";
+        }
         if(binary_output) {
-            output = fopen(output_file.c_str(), "wb");
             memset(&header, 0, sizeof(struct dat_header));
             header.magic[0] = '#';
             header.magic[1] = 'D';
@@ -191,27 +211,36 @@ int main(int argc, char **argv) {
             header.flags |= auto_trigger?DAT_FREE_TRIGGER:0;
             header.frames_per_sample = mode_2048? 2048: 1024;
             header.num_frames = 0;
+//             header.data_offset = plaintext_user_header.length();
             fwrite(&header, sizeof(struct dat_header), 1, output);
+            fwrite(plaintext_user_header.c_str(), plaintext_user_header.length(), 1, output);
         }
         else {
             sprintf(buf,
                     "##METATEXT\n"
                     "# version_i = 1\n"
                     "# compressed_b = %i\n"
-                    "# frames_per_sample_i = %i\n",
+                    "# frames_per_sample_i = %i\n"
+                    "##USERHEADER\n%s",
 //                     "# num_frames_i = %i\n
-                    compress_data, mode_2048? 2048: 1024);
+                    compress_data, mode_2048? 2048: 1024, plaintext_user_header.c_str());
             if(compress_data) {
                 // write header with lvl0 compression (uncompressed)
-                output_compressed = gzopen(output_file.c_str(), "w0");
+                output_compressed = gzdopen(fileno(output), "w0");
                 gzwrite(output_compressed, buf, strlen(buf));
                 gzflush(output_compressed, Z_SYNC_FLUSH);
                 // switch to specified compression level
                 gzsetparams(output_compressed, compression_level, Z_DEFAULT_STRATEGY);
             }
             else {
-                output = fopen(output_file.c_str(), "w");
+//                 output = fopen(output_file.c_str(), "w");
                 fwrite(buf, 1, strlen(buf), output);
+                int ferrno = ferror(output);
+                if(ferrno) {
+                    clearerr(output);
+                    fprintf(stderr, "Writing to output failed! Errno %i\n", ferrno);
+                    return 0;
+                }
             }
         }
     }
