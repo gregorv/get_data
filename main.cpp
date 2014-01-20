@@ -80,12 +80,14 @@ int main(int argc, char **argv) {
 //     bool auto_trigger = false;
     bool compress_data = false;
     int compression_level = 9;
+    float trigger_delay_percent = 100;
     vector<string> user_header;
-    while((optchar = getopt(argc, argv, "12bd:p:n:hvf:CH:l:a")) != -1) {
+    int ch_num = 0;
+    while((optchar = getopt(argc, argv, "12bd:p:n:hvf:CH:l:aT:D:")) != -1) {
         if(optchar == '?') return 1;
         else if(optchar == 'h') {
             std::cout << "Usage: " << argv[0]
-                      << " [-d OUTPUT_DIR] [-f OUTPUT_FILE] [-p PREFIX] [-n NUM_FRAMES] [-H user_header] [-c channel] [-v12bCh]\n\n"
+                      << " [-d OUTPUT_DIR] [-f OUTPUT_FILE] [-p PREFIX] [-n NUM_FRAMES] [-H user_header] [-c channel] [-D DELAY] [-T CH_NUM|ext] [-v12bCh]\n\n"
                       << "Command line arguments\n"
                       << " -1              1024-samples per frame (default)\n"
                       << " -2              2048-samples per frame\n"
@@ -101,6 +103,8 @@ int main(int argc, char **argv) {
                       << " -n NUM_FRAMES   Number of frames to record\n"
                       << " -p PREFIX       Filename prefix for directory output\n"
                       << " -v              Verbose output\n"
+                      << " -T [CH_NUM|ext] Trigger on channel CH_NUM or 'ext' for external trigger\n"
+                      << " -D delay        Trigger Delay in percent\n"
                       << std::endl;
             return 1;
         }
@@ -119,6 +123,15 @@ int main(int argc, char **argv) {
         else if(optchar == '2') mode_2048 = true;
         else if(optchar == '1') mode_2048 = false;
         else if(optchar == 'H') user_header.push_back(optarg);
+        else if(optchar == 'D') trigger_delay_percent = atof(optarg);
+        else if(optchar == 'T') {
+            if(strcmp(optarg, "EXT") == 0 || strcmp(optarg, "ext")) {
+                ch_num = 4; // external
+            }
+            else {
+                std::cout << "Not implemented trigger" << std::endl;
+            }
+        }
     }
     if(output_file.length() == 0) {
         char default_filename[50];
@@ -166,9 +179,9 @@ int main(int argc, char **argv) {
         // trigger settings
         b->SetTranspMode(1);
         b->EnableTrigger(1, 0);
-        b->SetTriggerSource(1); // CH1
+        b->SetTriggerSource(1<<ch_num); // CH1
     //     b->SetTriggerDelayNs(int(1024/0.69));
-        b->SetTriggerDelayPercent(100);
+        b->SetTriggerDelayPercent(trigger_delay_percent);
         if(verbose) std::cout << "Trigger delay " << b->GetTriggerDelayNs() << "ns, " << b->GetTriggerDelay() << std::endl;
 
         b->SetTriggerLevel(-0.01, true); // (V), pos. edge == false
@@ -211,7 +224,7 @@ int main(int argc, char **argv) {
             header.flags |= auto_trigger?DAT_FREE_TRIGGER:0;
             header.frames_per_sample = mode_2048? 2048: 1024;
             header.num_frames = 0;
-//             header.data_offset = plaintext_user_header.length();
+            header.data_offset = plaintext_user_header.length();
             fwrite(&header, sizeof(struct dat_header), 1, output);
             fwrite(plaintext_user_header.c_str(), plaintext_user_header.length(), 1, output);
         }
