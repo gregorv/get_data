@@ -8,6 +8,9 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/errno.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <errno.h>
 #include <signal.h>
 #include <zlib.h>
 #include <time.h>
@@ -70,6 +73,113 @@ void terminate(int signum) {
     }
 }
 
+
+class DetectorControl {
+private:
+    int sock;
+    FILE* stream;
+    string socket_file;
+    bool send_msg(string message) {
+        clearerr(stream);
+        size_t written = fwrite(message.c_str(), 1, message.length(), stream);
+        if(written == 0) {
+            if(ferror(stream)) {
+                std::cerr << "Detector control: cannot send command" << std::endl;
+                return false;
+            }
+        }
+        fflush(stream);
+        return true;
+    }
+    
+    string recv_line() {
+        string line("");
+        char* lineptr = NULL;
+        size_t n = 0;
+        errno = 0;
+        if(getline(&lineptr, &n, stream) == -1) {
+            if(errno) {
+                std::cerr << "Detector control: cannot receive response: " << strerror(errno) << std::endl;
+            }
+        }
+        else {
+            line = lineptr;
+        }
+        if(lineptr) free(lineptr);
+        return line;
+    }
+public:
+    DetectorControl(string sfile)
+    : sock(0), stream(0), socket_file(sfile) {
+    }
+    ~DetectorControl() {
+        disconnect_control();
+    }
+
+    bool connect_control() {
+        sock = socket(AF_UNIX, SOCK_STREAM, 0);
+        if(sock == -1) {
+            std::cerr << "Detector control: cannot create socket: " << strerror(errno) << std::endl;
+            return false;
+        }
+        struct sockaddr_un addr;
+        addr.sun_family = AF_UNIX;
+        strcpy(addr.sun_path, socket_file.c_str());
+        int len = strlen(addr.sun_path) + sizeof(addr.sun_family);
+        if(connect(sock, (const sockaddr*)&addr, len) != 0) {
+            std::cerr << "Detector control: cannot connect to UNIX domain socket: " << strerror(errno) << std::endl;
+            return false;
+        }
+        stream = fdopen(sock, "r+");
+        return true;
+    }
+
+    void disconnect_control() {
+        close(sock);
+        sock = 0;
+    }
+
+    void setTsoll(float T_soll) {
+        ostringstream line;
+        line << "T_soll=" << T_soll << "\n";
+        send_msg(line.str());
+    }
+
+    float getTsoll() {
+    }
+
+    float getTist() {
+        send_msg("T_detector\n");
+        istringstream is(recv_line());
+        float temperature;
+        is >> temperature;
+        return temperature;
+    }
+
+    bool temperatureStable() {
+        send_msg("stable\n");
+        string line = recv_line();
+        return line.find("True") != string::npos;
+    }
+
+    void interruptMeasurement() {
+        send_msg("interrupt\n");
+    }
+
+    void contineMeasurement() {
+        send_msg("continue\n");
+    }
+    
+    void hold_start() {
+        send_msg("hol");
+    }
+    
+    void hold_end() {
+        send_msg("d\n");
+    }
+};
+
+
 int main(int argc, char **argv) {
     // ENSURE that the header has the correct length...
     assert(sizeof(struct dat_header) == 20);
@@ -87,7 +197,10 @@ int main(int argc, char **argv) {
     float trigger_delay_percent = 100;
     vector<string> user_header;
     int ch_num = 0;
-    while((optchar = getopt(argc, argv, "12bBd:p:n:hvf:CH:l:aT:D:")) != -1) {
+    float T_soll = 0;
+    bool use_control = false;
+    string unix_socket("/tmp/detector_control.unix");
+    while((optchar = getopt(argc, argv, "12bBd:p:n:hvf:CH:l:aT:D:Us:")) != -1) {
         if(optchar == '?') return 1;
         else if(optchar == 'h') {
             std::cout << "Usage: " << argv[0]
@@ -110,6 +223,11 @@ int main(int argc, char **argv) {
                       << " -v              Verbose output\n"
                       << " -T [CH_NUM|ext] Trigger on channel CH_NUM or 'ext' for external trigger\n"
                       << " -D delay        Trigger Delay in percent\n"
+                      << " -U socket       UNIX domain socket for detector control.\n"
+                      << "                 Default: /tmp/detector_control.unix\n"
+                      << " -s T_soll       Enable temperature stabilized measurement.\n"
+                      << "                 Value in Kelvin if suffixed by K, other wise\n"
+                      << "                 it is interpreted as degree Celsius\n"
                       << std::endl;
             return 1;
         }
@@ -144,7 +262,29 @@ int main(int argc, char **argv) {
                 std::cout << "Not implemented trigger" << std::endl;
             }
         }
+        else if(optchar == 's') {
+            istringstream is(optarg);
+            is >> T_soll;
+            if(optarg[strlen(optarg)-1] != 'K') {
+                T_soll += 273.15;
+            }
+            use_control = true;
+        }
+        else if(optchar == 'U') {
+            unix_socket = optarg;
+        }
     }
+    
+    DetectorControl* control = NULL;
+    if(use_control) {
+        if(verbose) std::cout << "Set detector control temperature to " << T_soll << "K (" << T_soll-273.15 << "C)" << std::endl;
+        control = new DetectorControl(unix_socket);
+        control->connect_control();
+        control->setTsoll(T_soll);
+	sleep(2);
+        control->disconnect_control();
+    }
+    
     if(!compress_data)
         compression_level = -1;
     if(output_file.length() == 0) {
@@ -240,18 +380,63 @@ int main(int argc, char **argv) {
     if(verbose) std::cout << "Record " << num_frames << " frames" << std::endl;
     int num_samples = mode_2048? 2048 : 1024;
     uint32_t num_frames_written = 0;
+    bool temperature_stable = false;
+    int subframe_set = 500;
     for(unsigned int i=0; i<num_frames && !abort_measurement; i++) {
-        if(verbose) {
-            if(i % 10 == 0)
-                std::cout << "\33[2K\rSample " << i << " of " << num_frames << std::flush;
+        if(temperature_stable) {
+            control->connect_control();
+            if(!control->temperatureStable()) {
+                temperature_stable = false;
+                abort_measurement = true;
+                std::cout << "\33[2K\rTemperature stabilization failed, probably cooling limits reached. Abort measurement" << std::endl;
+                control->disconnect_control();
+                continue;
+            }
+            control->disconnect_control();
         }
-        captureSample();
-        if(abort_measurement) break;
-        float time[2048];
-        float data[2048];
-        board->GetTime(0, board->GetTriggerCell(0), time);
-        board->GetWave(0, mode_2048? 0 : 0, data);
-        datastream->write_frame(time, data);
+        else {
+            while(use_control && !temperature_stable && !abort_measurement) {
+                control->connect_control();
+                temperature_stable = control->temperatureStable();
+                float T_ist = control->getTist();
+                control->disconnect_control();
+                if(verbose) 
+                    std::cout << "\33[2K\rWait for detector temperature to stabilize... T_ist="
+                              << T_ist << "K, T_ist-T_soll=" << T_ist-T_soll << std::flush;
+                sleep(1);
+            }
+        }
+        if(abort_measurement) {
+            continue;
+        }
+        if(use_control) {
+            control->connect_control();
+            control->hold_start();
+//             std::cout << "Hold start" << std::endl;
+        }
+        unsigned int j=0;
+        for(j=i; j<(i+subframe_set) && j<num_frames && !abort_measurement; j++) {
+//             std::cout << "Sample!" << std::endl;
+            if(verbose) {
+                if(j % 10 == 0)
+                    std::cout << "\33[2K\rSample " << j << " of " << num_frames << std::flush;
+            }
+            captureSample();
+            if(abort_measurement) break;
+            float time[2048];
+            float data[2048];
+            board->GetTime(0, board->GetTriggerCell(0), time);
+            board->GetWave(0, mode_2048? 0 : 0, data);
+            datastream->write_frame(time, data);
+            num_frames_written++;
+        }
+        i = j;
+        if(use_control) {
+//             std::cout << "Hold end" << std::endl;
+            control->hold_end();
+            control->disconnect_control();
+            usleep(1000);
+        }
     }
     datastream->finalize();
     if(verbose) {
