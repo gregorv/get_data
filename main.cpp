@@ -19,6 +19,7 @@
 #include "textstream.h"
 #include "multifile.h"
 #include "yaml_binary.h"
+#include "binary.h"
 
 using namespace std;
 
@@ -32,21 +33,6 @@ struct sample
 {
     float time[1024];
     float data[8][1024];
-};
-
-#define DAT_COMPRESSED 1
-#define DAT_FREE_TRIGGER 2
-
-struct dat_header {
-    /*20 byte -> 0x14*/
-    char magic[5];
-    uint8_t version;
-    uint16_t frames_per_sample;
-    uint32_t num_frames;
-    uint8_t flags;
-    char reserved1[3];
-    uint16_t data_offset;
-    char reserved2[2];
 };
 
 void captureSample() {
@@ -209,8 +195,8 @@ int main(int argc, char **argv) {
                       << " -1              1024-samples per frame (default)\n"
                       << " -2              2048-samples per frame\n"
                       << " -a              Free-running mode (no trigger)\n"
-                      << " -b              binary output file; YAML header\n"
-                      << " -B              binary output file, version 1\n"
+                      << " -B              binary output file; YAML header\n"
+                      << " -b              binary output file, version 1\n"
 //                       << " -c channel      Set readout channel number (default = 1)\n"
                       << " -C              Enable zlib compression (only works with single text file).\n"
                       << " -d              Output directory (will create one file per frame!)\n"
@@ -242,11 +228,11 @@ int main(int argc, char **argv) {
             in >> num_frames;
         }
         else if(optchar == 'v') verbose = true;
-        else if(optchar == 'b') {
+        else if(optchar == 'B') {
             binary_output = true;
             binary_version = 2;
         }
-        else if(optchar == 'B') {
+        else if(optchar == 'b') {
             binary_output = true;
             binary_version = 1;
         }
@@ -279,7 +265,8 @@ int main(int argc, char **argv) {
     if(use_control) {
         if(verbose) std::cout << "Set detector control temperature to " << T_soll << "K (" << T_soll-273.15 << "C)" << std::endl;
         control = new DetectorControl(unix_socket);
-        control->connect_control();
+        if(!control->connect_control())
+            return -1;
         control->setTsoll(T_soll);
 	sleep(2);
         control->disconnect_control();
@@ -357,14 +344,15 @@ int main(int argc, char **argv) {
         if(binary_output && binary_version == 2)
             datastream = new YAMLBinaryStream;
         else if(binary_output && binary_version == 1) {
-            std::cout << "Classical binary format not supported, at the moment. Sorry!" << std::endl;
-            exit(-1);
+            datastream = new BinaryStream;
         }
         else
             datastream = new TextStream();
     }
     else
         datastream = new MultiFileStream();
+    if(use_control)
+        datastream->add_user_entry("T_soll_f", T_soll);
     datastream->init(output_directory, output_file, mode_2048? 2048:1024,
                      compression_level, auto_trigger, binary_output,
                      trigger_delay_percent);
@@ -439,6 +427,7 @@ int main(int argc, char **argv) {
         }
     }
     datastream->finalize();
+    delete datastream;
     if(verbose) {
         if(abort_measurement)
             std::cout << "\33[K\rAborted reading samples after "
