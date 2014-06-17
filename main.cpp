@@ -244,11 +244,22 @@ int main(int argc, char **argv) {
         else if(optchar == 'H') user_header.push_back(optarg);
         else if(optchar == 'D') trigger_delay_percent = atof(optarg);
         else if(optchar == 'T') {
-            if(strcmp(optarg, "EXT") == 0 || strcmp(optarg, "ext")) {
+            if(strcmp(optarg, "EXT") == 0 || strcmp(optarg, "ext") == 0) {
                 ch_num = 4; // external
             }
             else {
-                std::cout << "Not implemented trigger" << std::endl;
+                ch_num = strtol(optarg, 0, 10);
+                if(((ch_num == LLONG_MIN || ch_num == LLONG_MAX) && errno == ERANGE) ||
+                   (ch_num == 0 && errno == EINVAL)) {
+                    std::cerr << argv[0] << ": Invalid trigger channel number '" << optarg << "'!" << std::endl;
+                    return -1;
+                }
+                ch_num -= 1; // we want "Channel 1" to have the internal number 0
+                if(ch_num < 0 || ch_num > 3) {
+                    std::cerr << argv[0] << ": Invalid trigger channel number " << optarg
+                              << "! Must be  in range 1..4" << std::endl;
+                    return -1;
+                }
             }
         }
         else if(optchar == 's') {
