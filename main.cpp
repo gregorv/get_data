@@ -192,13 +192,14 @@ int main(int argc, char **argv) {
     vector<string> user_header;
     int ch_num = 0;
     float T_soll = 0;
+    float trigger_threshold = -0.05;
     bool use_control = false;
     string unix_socket("/tmp/detector_control.unix");
-    while((optchar = getopt(argc, argv, "12bBd:p:n:hvf:CH:l:aT:D:Us:")) != -1) {
+    while((optchar = getopt(argc, argv, "12bBd:p:n:hvf:CH:l:aT:D:Us:t:")) != -1) {
         if(optchar == '?') return 1;
         else if(optchar == 'h') {
             std::cout << "Usage: " << argv[0]
-                      << " [-d OUTPUT_DIR] [-f OUTPUT_FILE] [-p PREFIX] [-n NUM_FRAMES] [-H user_header] [-c channel] [-D DELAY] [-T CH_NUM|ext] [-v12bBCh]\n\n"
+                      << " [-d OUTPUT_DIR] [-1 OUTPUT_FILE] [-p PREFIX] [-n NUM_FRAMES] [-H user_header] [-c channel] [-D DELAY] [-t TRIGGER_LEVEL(V)] [-T CH_NUM|ext] [-v12bBCh]\n\n"
                       << "Command line arguments\n"
                       << " -1              1024-samples per frame (default)\n"
                       << " -2              2048-samples per frame\n"
@@ -215,6 +216,7 @@ int main(int argc, char **argv) {
                       << " -n NUM_FRAMES   Number of frames to record\n"
                       << " -p PREFIX       Filename prefix for directory output\n"
                       << " -v              Verbose output\n"
+                      << " -t TrigTrheshV  Set the trigger threshold in Volts. Default = -0.05V\n"
                       << " -T [CH_NUM|ext] Trigger on channel CH_NUM or 'ext' for external trigger\n"
                       << " -D delay        Trigger Delay in percent\n"
                       << " -U socket       UNIX domain socket for detector control.\n"
@@ -231,6 +233,7 @@ int main(int argc, char **argv) {
         else if(optchar == 'a') auto_trigger = true;
         else if(optchar == 'C') compress_data = true;
         else if(optchar == 'l') compression_level = atoi(optarg);
+	else if(optchar == 't') trigger_threshold = atof(optarg);
         else if(optchar == 'n') {
             istringstream in(optarg);
             in >> num_frames;
@@ -331,9 +334,15 @@ int main(int argc, char **argv) {
         b->SetTriggerSource(1<<ch_num); // CH1
     //     b->SetTriggerDelayNs(int(1024/0.69));
         b->SetTriggerDelayPercent(trigger_delay_percent);
-        if(verbose) std::cout << "Trigger delay " << b->GetTriggerDelayNs() << "ns, " << b->GetTriggerDelay() << std::endl;
-
-        b->SetTriggerLevel(-0.01, true); // (V), pos. edge == false
+        if(verbose) {
+            std::cout << "Trigger delay " << b->GetTriggerDelayNs() << "ns, " << b->GetTriggerDelay() << std::endl;
+            std::cout << "Trigger threshold " << trigger_threshold << endl;
+            if(ch_num == 4)
+            	cout << "Trigger source: External" << endl;
+            else
+                cout << "Trigger source: Channel " << ch_num << endl;
+        }
+        b->SetTriggerLevel(trigger_threshold, true); // (V), pos. edge == false
     }
     
     // 2048 sample mode
