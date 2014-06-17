@@ -16,7 +16,7 @@ protected:
     int frame_counter;
     int first_header_length;
     virtual bool init_stream() {
-        file = fopen(filename.c_str(), "wb");
+        file = fopen64(filename.c_str(), "wb");
         return true;
     }
     
