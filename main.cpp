@@ -155,14 +155,6 @@ public:
     void contineMeasurement() {
         send_msg("continue\n");
     }
-
-    void disableCooling() {
-        send_msg("off\n");
-    }
-
-    void enableCooling() {
-        send_msg("on\n");
-    }
     
     void hold_start() {
         send_msg("hol");
@@ -394,7 +386,6 @@ int main(int argc, char **argv) {
                 temperature_stable = false;
                 abort_measurement = true;
                 std::cout << "\33[2K\rTemperature stabilization failed, probably cooling limits reached. Abort measurement" << std::endl;
-                control->disablePowersupply();
                 control->disconnect_control();
                 continue;
             }
@@ -420,11 +411,8 @@ int main(int argc, char **argv) {
             control->hold_start();
 //             std::cout << "Hold start" << std::endl;
         }
-	unsigned int j=0;
-	time_t start_time = time(NULL);
+        unsigned int j=0;
         for(j=i; j<(i+subframe_set) && j<num_frames && !abort_measurement; j++) {
-            if(time(NULL) - start_time > 1)
-                break;
 //             std::cout << "Sample!" << std::endl;
             if(verbose) {
                 if(j % 10 == 0)
