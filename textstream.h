@@ -15,6 +15,7 @@ private:
     FILE* file;
     gzFile zfile;
     int frame_counter;
+    std::string write_fmt;
 
     void write_raw(string data, bool uncompressed) {
         if(compress_data) {
@@ -36,6 +37,13 @@ private:
     }
     
     virtual bool init_stream() {
+        write_fmt = "%f";
+        for(auto ch: ch_config) {
+            if(ch != -1) {
+                write_fmt += " %f";
+            }
+        }
+        write_fmt += '\n';
         file = fopen64(filename.c_str(), "wb");
         if(compress_data) {
             zfile = gzdopen(fileno(file), "w0");
@@ -79,6 +87,21 @@ public:
         size_t len = sprintf(buf, "\n\n##FRAME:%i\n", frame_counter);
         for(int i=0; i<frames_per_sample; i++) {
             len += sprintf(buf+len, "%f %f\n", time[i], data[i]);
+        }
+        write_raw(buf, false);
+        frame_counter++;
+        return true;
+    }
+    virtual bool write_frame(float* time, const std::array<float*, 4>& data) {
+        char buf[65535];
+        size_t len = sprintf(buf, "\n\n##FRAME:%i\n", frame_counter);
+        for(int i=0; i<frames_per_sample; i++) {
+            len += sprintf(buf+len, write_fmt.c_str(), time[i],
+                           ch_config[0] != -1? data[ch_config[0]][i] : 0.0f,
+                           ch_config[1] != -1? data[ch_config[1]][i] : 0.0f,
+                           ch_config[2] != -1? data[ch_config[2]][i] : 0.0f,
+                           ch_config[3] != -1? data[ch_config[3]][i] : 0.0f
+                   );
         }
         write_raw(buf, false);
         frame_counter++;

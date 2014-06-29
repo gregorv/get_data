@@ -58,6 +58,10 @@ public:
         fwrite(data, sizeof(float), frames_per_sample, file);
         return true;
     }
+    virtual bool write_frame(float* time, const std::array<float*, 4>& data)
+    {
+        throw not_suppported_write("YAML binary with multi channel recording.");
+    }
     virtual bool finalize() {
         return true;
     }

@@ -49,6 +49,31 @@ public:
         frame_counter++;
         return true;
     }
+    virtual bool write_frame(float* time, const std::array<float*, 4>& data) {
+        if(frame_counter >= 1000000)
+            return false;
+        if(binary_output) {
+            throw not_suppported_write("Multi-channel recording with binary data stream");
+        }
+        else {
+            char fname[1024];
+            sprintf(fname, "%s%s_%06i.csv", directory.c_str(), filename.c_str(), frame_counter);
+            FILE* f = fopen(fname, "w");
+            fwrite("#TXT\n", strlen("#TXT\n"), 1, f);
+            for(int i=0; i<frames_per_sample; i++) {
+                fprintf(f, "%f", time[i]);
+                for(auto ch: ch_config) {
+                    if(ch != -1) {
+                        fprintf(f, " %f", data[ch][i]);
+                    }
+                }
+                fprintf(f, "\n");
+            }
+            fclose(f);
+        }
+        frame_counter++;
+        return true;
+    }
     virtual bool finalize() {
         return true;
     }
