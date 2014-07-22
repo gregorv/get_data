@@ -1,2 +1,5 @@
 Gregor Vollmer	<vollmer@ekp.uni-karlsruhe.de>
 Ralf Ulrich	<ralf.ulrich@kit.edu>
+
+FindROOT.cmake by F.Uhlig@gsi.de (fairroot.gsi.de)
+FindLibUSB.cmake by Michal Cihar, <michal@cihar.com>
