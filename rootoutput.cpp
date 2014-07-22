@@ -25,8 +25,11 @@
 #include <TObjString.h>
 
 RootOutput::RootOutput()
- : m_frame_counter(0)
+ : m_frame_counter(0), m_data_graphs{nullptr, nullptr, nullptr, nullptr}
 {
+    for(size_t i=0; i<4; i++) {
+        m_data_graphs[i] = new TGraph;
+    }
 }
 
 RootOutput::~RootOutput()
@@ -36,6 +39,12 @@ RootOutput::~RootOutput()
 bool RootOutput::init_stream()
 {
     m_file = std::make_shared<TFile>(filename.c_str(), "create");
+    m_tree = std::make_shared<TTree>("data", "data");
+    m_tree->Branch("t_0", &m_record_timestamp, "t_0/L");
+    m_tree->Branch("ch1", "TGraph", &m_data_graphs[0]);
+    m_tree->Branch("ch2", "TGraph", &m_data_graphs[1]);
+    m_tree->Branch("ch3", "TGraph", &m_data_graphs[2]);
+    m_tree->Branch("ch4", "TGraph", &m_data_graphs[3]);
     return m_file.get() != nullptr;
 }
 
@@ -50,52 +59,44 @@ bool RootOutput::write_header()
 
 bool RootOutput::write_frame(const nanoseconds& record_time, float* time, float* data)
 {
-    std::ostringstream recordTimestampsText;
-    recordTimestampsText << record_time.count();
-    auto timestampText = std::make_shared<TObjString>(recordTimestampsText.str().c_str());
-    timestampText->Write("record_timestamps");
-
-    auto graph = std::make_shared<TGraph>(frames_per_sample, time, data);
-    std::ostringstream name;
-    name << "frame " << m_frame_counter++;
-    graph->SetTitle(name.str().c_str());
-    graph->Write("frame");
-
-//     m_recordTimestampsText << name << record_time.count() << " ns\n";
-    return true;
+    std::array<float*, 4> data_array = {data, nullptr, nullptr, nullptr};
+    std::array< int, 4> my_ch_config = {0, -1, -1, -1};
+    return write_frame(record_time, time, data_array, my_ch_config);
 }
 
 bool RootOutput::write_frame(const nanoseconds& record_time, float* time, const std::array<float*, 4>& data)
 {
-    std::ostringstream recordTimestampsText;
-    recordTimestampsText << record_time.count();
-    auto timestampText = std::make_shared<TObjString>(recordTimestampsText.str().c_str());
-    timestampText->Write("record_timestamps");
+    return write_frame(record_time, time, data, ch_config);
+}
 
-    auto multi = std::make_shared<TMultiGraph>();
+bool RootOutput::write_frame(const nanoseconds& record_time, float* time,
+                             const std::array< float*, 4  >& data,
+                             std::array< int, 4  > my_ch_config)
+{
+    m_record_timestamp = record_time.count();
     for(auto ch: ch_config) {
         if(ch == -1) {
             continue;
         }
+        if(m_data_graphs[ch]->GetN() != frames_per_sample) {
+            m_data_graphs[ch]->Set(frames_per_sample);
+        }
         std::ostringstream col_name;
         col_name << "Channel " << ch;
-        auto graph = std::make_shared<TGraph>(frames_per_sample, time, data[ch]);
-        multi->Add(graph.get(), col_name.str().c_str());
+        for(size_t i; i<frames_per_sample; i++) {
+            m_data_graphs[ch]->SetPoint(i, time[i], data[ch][i]);
+        }
     }
-    std::ostringstream frame_name;
-    frame_name << "frame_" << m_frame_counter++;
-    multi->SetTitle(frame_name.str().c_str());
-    multi->Write("frame");
-
-    m_recordTimestampsText << record_time.count() << " ns\n";
+    m_tree->Fill();
     return true;
 }
 
 bool RootOutput::finalize()
 {
-//     auto timestampText = std::make_shared<TObjString>(m_recordTimestampsText.str().c_str());
-//     timestampText->Write("record_timestamps");
+//     m_tree->Write();  <- don't! Written automatically
     m_file->Write();
+    m_tree.reset();  // if the tree is not deleted, closing the file will crash!
+
     m_file->Close();
     m_file.reset();
     return true;

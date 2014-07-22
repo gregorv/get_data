@@ -24,7 +24,10 @@
 #include "datastream.h"
 
 #include <TFile.h>
+#include <TTree.h>
 #include <memory>
+
+class TGraph;
 
 class RootOutput : public DataStream
 {
@@ -34,6 +37,9 @@ public:
 
     virtual bool write_frame(const nanoseconds& record_time, float* time, float* data);
     virtual bool write_frame(const nanoseconds& record_time, float* time, const std::array<float*, 4>& data);
+    virtual bool write_frame(const nanoseconds& record_time, float* time,
+                             const std::array<float*, 4>& data,
+                             std::array<int, 4> my_ch_config);
     virtual bool write_header();
     virtual bool finalize();
 
@@ -44,10 +50,11 @@ protected:
 
 private:
     std::shared_ptr<TFile> m_file;
+    std::shared_ptr<TTree> m_tree;
     std::ostringstream m_recordTimestampsText;
     size_t m_frame_counter;
-
-
+    uint64_t m_record_timestamp;
+    TGraph* m_data_graphs[4];
 };
 
 #endif // ROOTOUTPUT_H
