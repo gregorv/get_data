@@ -89,7 +89,7 @@ public:
         if(filename.length() == 0) {
             char default_filename[50];
             time_t now = time(0);
-            strftime(default_filename, sizeof(default_filename)-1, "%Y-%m-%d_%H-%M", gmtime(&now));
+            strftime(default_filename, sizeof(default_filename)-1, "%Y-%m-%d_%H-%M-%S", gmtime(&now));
             filename = default_filename;
             filename += get_file_extension();
         }
