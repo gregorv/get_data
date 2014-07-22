@@ -110,13 +110,15 @@ int main(int argc, char **argv) {
     int trigger_ch_num = 0;
     float T_soll = 0;
     float trigger_threshold = -0.05;
+    float sample_rate = 0.68;
+    bool trigger_edge_negative = true;
     bool use_control = false;
     string unix_socket("/tmp/detector_control.unix");
-    while((optchar = getopt(argc, argv, "12bBd:p:n:hvo:f:CH:l:aT:D:Us:t:c:")) != -1) {
+    while((optchar = getopt(argc, argv, "12bBd:p:n:hvo:fF:PCH:l:aT:D:Us:t:c:")) != -1) {
         if(optchar == '?') return 1;
         else if(optchar == 'h') {
             std::cout << "Usage: " << argv[0]
-                      << " [-d OUTPUT_DIR] [-1 OUTPUT_FILE] [-p PREFIX] [-n NUM_FRAMES] [-H user_header] [-c channel] [-D DELAY] [-t TRIGGER_LEVEL(V)] [-T CH_NUM|ext] [-v12bBCh]\n\n"
+                      << " [-d OUTPUT_DIR] [-1 OUTPUT_FILE] [-p PREFIX] [-n NUM_FRAMES] [-H user_header] [-c channel] [-D DELAY] [-t TRIGGER_LEVEL(V)] [-T CH_NUM|ext] [-v12bBChP]\n\n"
                       << "Command line arguments\n"
                       << " -a               Free-running mode (no trigger)\n"
                       << " -c CH1[,CH2,...] Set one or more readout channel numbers (default = 1)\n"
@@ -124,12 +126,14 @@ int main(int argc, char **argv) {
                       << " -d               Output directory (will create one file per frame!)\n"
                       << " -f FORMAT        File output (creates a single file for all frame, with meta information).\n"
                       << "                  FORMAT is one of MULTIFILE, MULTIFILE_BIN, TEXT, BIN, YAML or ROOT.\n"
+                      << " -F f_SAMPLE      Sampling frequency in GSp/s, range ~0.68-5, default 0.68GSp/s\n"
                       << " -H user_header   Add a line to the user header\n"
 //                       << " -k COMMENT_VARS Add commentary variables to output file (single-file ASCII only)
                       << " -l LVL           Set compression level (default 9). Only used if -c is set\n"
                       << " -n NUM_FRAMES    Number of frames to record\n"
                       << " -o               Filename when using -f option.\n"
                       << " -p PREFIX        Filename prefix for directory output\n"
+                      << " -P               Trigger on positive edge [default NEGATIVE]\n"
                       << " -v               Verbose output\n"
                       << " -t TrigTrheshV   Set the trigger threshold in Volts. Default = -0.05V\n"
                       << " -T [CH_NUM|ext]  Trigger on channel CH_NUM or 'ext' for external trigger\n"
@@ -159,6 +163,14 @@ int main(int argc, char **argv) {
             else if(format_str == "ROOT") output_format = OF_ROOT;
             else {
                 std::cerr << argv[0] << ": Unknown output format " << optarg << std::endl;
+                return 1;
+            }
+        }
+        else if(optchar == 'F') {
+            try {
+                sample_rate = boost::lexical_cast<float>(optarg);
+            } catch(boost::bad_lexical_cast const& e) {
+                std::cerr << argv[0] << ": Cannot parse sample rate '" << optarg << "', must be floating point number." << std::endl;
                 return 1;
             }
         }
@@ -194,6 +206,9 @@ int main(int argc, char **argv) {
                     return -1;
                 }
             }
+        }
+        else if(optchar == 'P') {
+            trigger_edge_negative = false;
         }
         else if(optchar == 's') {
             istringstream is(optarg);
@@ -269,7 +284,7 @@ int main(int argc, char **argv) {
     }
     // basic DRS setup
     b->Init();
-    b->SetFrequency(0.68, true); // sampling freq in GHz
+    b->SetFrequency(sample_rate, true); // sampling freq in GHz
     b->SetInputRange(0);
 
     if(!auto_trigger) {
@@ -285,22 +300,25 @@ int main(int argc, char **argv) {
                 if(ch_num[i] != -1) std::cout << "\n                   column " << i+1 << ": CH " << ch_num[i] + 1;
             }
             std::cout << std::endl;
-            std::cout << "Trigger delay " << b->GetTriggerDelayNs() << "ns, " << b->GetTriggerDelay() << std::endl;
-            std::cout << "Trigger threshold " << trigger_threshold << endl;
+            std::cout << "Trigger delay " << b->GetTriggerDelayNs() << "ns, " << b->GetTriggerDelay() << "%" << std::endl;
+            std::cout << "Trigger threshold " << trigger_threshold << " V, "
+                      << (trigger_edge_negative? "negative" : "positive")
+                      << " polarity" << endl;
             if(trigger_ch_num == 4)
-            	cout << "Trigger source: External" << endl;
+                cout << "Trigger source: External" << endl;
             else
                 cout << "Trigger source: Channel " << trigger_ch_num << endl;
         }
-        b->SetTriggerLevel(trigger_threshold, true); // (V), pos. edge == false
+        b->SetTriggerLevel(trigger_threshold, trigger_edge_negative); // (V), pos. edge == false
     }
-    
+
     // 2048 sample mode
     if(mode_2048) {
         b->SetChannelConfig(0, 1, 4);
         if(verbose) {
             std::cout << "2048 sample mode, channel cascading " << board->GetChannelCascading() << std::endl;
         }
+        std::cerr << "Warning: 2048 sample mode won't work unless your DRS4 Eval Board Hardware is configured to support channel cascading!" << std::endl;
     }
     else if(verbose) {
         std::cout << "1024 sample mode" << std::endl;
