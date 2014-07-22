@@ -42,6 +42,7 @@
 #include "multifile.h"
 #include "yaml_binary.h"
 #include "binary.h"
+#include "detectorcontrol.h"
 
 using namespace std;
 
@@ -80,113 +81,6 @@ void terminate(int signum) {
         abort_measurement = true;
     }
 }
-
-
-class DetectorControl {
-private:
-    int sock;
-    FILE* stream;
-    string socket_file;
-    bool send_msg(string message) {
-        clearerr(stream);
-        size_t written = fwrite(message.c_str(), 1, message.length(), stream);
-        if(written == 0) {
-            if(ferror(stream)) {
-                std::cerr << "Detector control: cannot send command" << std::endl;
-                return false;
-            }
-        }
-        fflush(stream);
-        return true;
-    }
-    
-    string recv_line() {
-        string line("");
-        char* lineptr = NULL;
-        size_t n = 0;
-        errno = 0;
-        if(getline(&lineptr, &n, stream) == -1) {
-            if(errno) {
-                std::cerr << "Detector control: cannot receive response: " << strerror(errno) << std::endl;
-            }
-        }
-        else {
-            line = lineptr;
-        }
-        if(lineptr) free(lineptr);
-        return line;
-    }
-public:
-    DetectorControl(string sfile)
-    : sock(0), stream(0), socket_file(sfile) {
-    }
-    ~DetectorControl() {
-        disconnect_control();
-    }
-
-    bool connect_control() {
-        sock = socket(AF_UNIX, SOCK_STREAM, 0);
-        if(sock == -1) {
-            std::cerr << "Detector control: cannot create socket: " << strerror(errno) << std::endl;
-            return false;
-        }
-        struct sockaddr_un addr;
-        addr.sun_family = AF_UNIX;
-        strcpy(addr.sun_path, socket_file.c_str());
-        int len = strlen(addr.sun_path) + sizeof(addr.sun_family);
-        if(connect(sock, (const sockaddr*)&addr, len) != 0) {
-            std::cerr << "Detector control: cannot connect to UNIX domain socket: " << strerror(errno) << std::endl;
-            return false;
-        }
-        stream = fdopen(sock, "r+");
-        return true;
-    }
-
-    void disconnect_control() {
-        close(sock);
-        sock = 0;
-    }
-
-    void setTsoll(float T_soll) {
-        ostringstream line;
-        line << "T_soll=" << T_soll << "\n";
-        send_msg(line.str());
-    }
-
-    float getTsoll() {
-    }
-
-    float getTist() {
-        send_msg("T_detector\n");
-        istringstream is(recv_line());
-        float temperature;
-        is >> temperature;
-        return temperature;
-    }
-
-    bool temperatureStable() {
-        send_msg("stable\n");
-        string line = recv_line();
-        return line.find("True") != string::npos;
-    }
-
-    void interruptMeasurement() {
-        send_msg("interrupt\n");
-    }
-
-    void contineMeasurement() {
-        send_msg("continue\n");
-    }
-    
-    void hold_start() {
-        send_msg("hol");
-    }
-    
-    void hold_end() {
-        send_msg("d\n");
-    }
-};
-
 
 int main(int argc, char **argv) {
     // ENSURE that the header has the correct length...
