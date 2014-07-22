@@ -58,7 +58,7 @@ enum output_format_t {
 
 DRSBoard* board;
 
-bool verbose = false;
+bool verbose = true;
 bool abort_measurement = false;
 bool auto_trigger = false;
 
@@ -113,27 +113,26 @@ int main(int argc, char **argv) {
     bool trigger_edge_negative = true;
     bool use_control = false;
     string unix_socket("/tmp/detector_control.unix");
-    while((optchar = getopt(argc, argv, "12bBd:p:n:hvo:fF:PCH:l:aT:D:Us:t:c:")) != -1) {
+    while((optchar = getopt(argc, argv, "12bBd:p:n:ho:f:F:PCH:l:aT:D:Us:t:c:v")) != -1) {
         if(optchar == '?') return 1;
         else if(optchar == 'h') {
             std::cout << "Usage: " << argv[0]
-                      << " [-d OUTPUT_DIR] [-1 OUTPUT_FILE] [-p PREFIX] [-n NUM_FRAMES] [-H user_header] [-c channel] [-D DELAY] [-t TRIGGER_LEVEL(V)] [-T CH_NUM|ext] [-v12bBChP]\n\n"
+                      << " [OPTIONS]\n\n"
                       << "Command line arguments\n"
                       << " -a               Free-running mode (no trigger)\n"
                       << " -c CH1[,CH2,...] Set one or more readout channel numbers (default = 1)\n"
                       << " -C               Enable zlib compression (only works with single text file).\n"
                       << " -d               Output directory (will create one file per frame!)\n"
-                      << " -f FORMAT        File output (creates a single file for all frame, with meta information).\n"
+                      << " -f FORMAT        Set the format of the recorded data.\n"
                       << "                  FORMAT is one of MULTIFILE, MULTIFILE_BIN, TEXT, BIN, YAML or ROOT.\n"
                       << " -F f_SAMPLE      Sampling frequency in GSp/s, range ~0.68-5, default 0.68GSp/s\n"
                       << " -H user_header   Add a line to the user header\n"
 //                       << " -k COMMENT_VARS Add commentary variables to output file (single-file ASCII only)
                       << " -l LVL           Set compression level (default 9). Only used if -c is set\n"
                       << " -n NUM_FRAMES    Number of frames to record\n"
-                      << " -o               Filename when using -f option.\n"
-                      << " -p PREFIX        Filename prefix for directory output\n"
+                      << " -o               Name of the output file(s).\n"
                       << " -P               Trigger on positive edge [default NEGATIVE]\n"
-                      << " -v               Verbose output\n"
+//                       << " -v               Verbose output\n"
                       << " -t TrigTrheshV   Set the trigger threshold in Volts. Default = -0.05V\n"
                       << " -T [CH_NUM|ext]  Trigger on channel CH_NUM or 'ext' for external trigger\n"
                       << " -D delay         Trigger Delay in percent\n"
@@ -173,7 +172,6 @@ int main(int argc, char **argv) {
                 return 1;
             }
         }
-        else if(optchar == 'p') output_file_prefix = optarg;
         else if(optchar == 'a') auto_trigger = true;
         else if(optchar == 'C') compress_data = true;
         else if(optchar == 'l') compression_level = atoi(optarg);
@@ -182,7 +180,7 @@ int main(int argc, char **argv) {
             istringstream in(optarg);
             in >> num_frames;
         }
-        else if(optchar == 'v') verbose = true;
+        else if(optchar == 'v') std::cout << "Note: verbose mode active by default! Changes on console status display comming in future versions! :-)" << std::endl;
         else if(optchar == '2') mode_2048 = true;
         else if(optchar == '1') mode_2048 = false;
         else if(optchar == 'H') user_header.push_back(optarg);
