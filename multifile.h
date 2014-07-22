@@ -33,6 +33,13 @@ class MultiFileStream : public DataStream {
 protected:
     int frame_counter;
     virtual bool init_stream() {
+        filename = "sample";
+        if(directory.length() == 0) {
+            char default_dir[50];
+            time_t now = time(0);
+            strftime(default_dir, sizeof(default_dir)-1, "%Y-%m-%d_%H-%M-%S/", gmtime(&now));
+            directory = default_dir;
+        }
         if(directory[directory.length()-1] != '/') {
             directory += '/';
         }
@@ -60,6 +67,10 @@ public:
             char fname[1024];
             sprintf(fname, "%s%s_%05i.dat", directory.c_str(), filename.c_str(), frame_counter);
             FILE* f = fopen(fname, "wb");
+            if(!f) {
+                std::cerr << "Cannot open output file '" << fname << "', errno " << errno << std::endl;
+                return false;
+            }
             fwrite("#BIN\n", strlen("#BIN\n"), 1, f);
             fwrite(&time, sizeof(float), frames_per_sample, f);
             fwrite(&data, sizeof(float), frames_per_sample, f);
@@ -69,9 +80,13 @@ public:
             char fname[1024];
             sprintf(fname, "%s%s_%06i.csv", directory.c_str(), filename.c_str(), frame_counter);
             FILE* f = fopen(fname, "w");
+            if(!f) {
+                std::cerr << "Cannot open output file '" << fname << "', errno " << errno << std::endl;
+                return false;
+            }
             fwrite("#TXT\n", strlen("#TXT\n"), 1, f);
-            fprintf(f, "# cmd: %s\n# record timestamp: %li ns\n",
-                    command_line.c_str(), record_time.count());
+            fprintf(f, "# cmd: %s\n# record timestamp: %li us\n",
+                    command_line.c_str(), record_time.count() / 1000);
             for(int i=0; i<frames_per_sample; i++) {
                 fprintf(f, "%f", time[i]);
                 fprintf(f, " %f", data[i]);
@@ -93,8 +108,8 @@ public:
             sprintf(fname, "%s%s_%06i.csv", directory.c_str(), filename.c_str(), frame_counter);
             FILE* f = fopen(fname, "w");
             fwrite("#TXT\n", 5, 1, f);
-            fprintf(f, "# cmd: %s\n# record timestamp: %li ns\n",
-                    command_line.c_str(), record_time.count());
+            fprintf(f, "# cmd: %s\n# record timestamp: %li us\n",
+                    command_line.c_str(), record_time.count() / 1000);
             for(int i=0; i<frames_per_sample; i++) {
                 fprintf(f, "%f", time[i]);
                 for(auto ch: ch_config) {

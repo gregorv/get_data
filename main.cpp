@@ -96,7 +96,6 @@ int main(int argc, char **argv) {
     int optchar = -1;
     string output_directory("");
     string output_file("");
-    string output_file_prefix("sample_");
     output_format_t output_format = OF_TEXTSTREAM;
     unsigned int num_frames = 10;
     bool mode_2048 = false;
@@ -427,10 +426,16 @@ int main(int argc, char **argv) {
                 board->GetWave(0, 2, data_2);
                 board->GetWave(0, 4, data_3);
                 board->GetWave(0, 6, data_4);
-                datastream->write_frame(record_time, time, data_array);
+                if(!datastream->write_frame(record_time, time, data_array)) {
+                    abort_measurement = true;
+                    break;
+                }
             } else {
                 board->GetWave(0, mode_2048? 0 : 0, data_1);
-                datastream->write_frame(record_time, time, data_1);
+                if(!datastream->write_frame(record_time, time, data_1)) {
+                    abort_measurement = true;
+                    break;
+                }
             }
             num_frames_written++;
         }
