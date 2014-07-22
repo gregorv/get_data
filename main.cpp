@@ -304,7 +304,7 @@ int main(int argc, char **argv) {
             if(trigger_ch_num == 4)
                 cout << "Trigger source: External" << endl;
             else
-                cout << "Trigger source: Channel " << trigger_ch_num << endl;
+                cout << "Trigger source: Channel " << trigger_ch_num+1 << endl;
         }
         b->SetTriggerLevel(trigger_threshold, trigger_edge_negative); // (V), pos. edge == false
     }
