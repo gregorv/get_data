@@ -38,6 +38,9 @@
 #include "yaml_binary.h"
 #include "binary.h"
 #include "detectorcontrol.h"
+#ifdef ROOT_FOUND
+ #include "rootoutput.h"
+#endif
 
 using std::chrono::high_resolution_clock;
 using std::chrono::duration_cast;
@@ -136,6 +139,9 @@ int main(int argc, char **argv) {
                       << " -s T_soll        Enable temperature stabilized measurement.\n"
                       << "                  Value in Kelvin if suffixed by K, other wise\n"
                       << "                  it is interpreted as degree Celsius\n"
+#ifndef ROOT_FOUND
+                      << "\nThis version of get_data was compiled without ROOT support!\n"
+#endif
                       << std::endl;
             return 1;
         }
@@ -226,6 +232,13 @@ int main(int argc, char **argv) {
         }
     }
 
+#ifndef ROOT_FOUND
+    if(output_format == OF_ROOT) {
+        std::cerr << argv[0] << ": get_data was not compiled with ROOT support!" << std::endl;
+        return 1;
+    }
+#endif
+
     DetectorControl* control = NULL;
     if(use_control) {
         if(verbose) std::cout << "Set detector control temperature to " << T_soll << "K (" << T_soll-273.15 << "C)" << std::endl;
@@ -310,10 +323,12 @@ int main(int argc, char **argv) {
     } else if(output_format == OF_TEXTSTREAM) {
         binary_output = compress_data;
         datastream.reset(new TextStream);
+#ifdef ROOT_FOUND
     } else if(output_format == OF_ROOT) {
         datastream.reset(new RootOutput);
 //     } else if(output_format == OF_ROOT_TREE) {
 //         datastream.reset(new RootTree);
+#endif
     } else {
         std::cerr << argv[0] << ": output format not implemented!" << std::endl;
         return 1;
@@ -350,8 +365,7 @@ int main(int argc, char **argv) {
                 continue;
             }
             control->disconnect_control();
-        }
-        else {
+        } else {
             while(use_control && !temperature_stable && !abort_measurement) {
                 control->connect_control();
                 temperature_stable = control->temperatureStable();
