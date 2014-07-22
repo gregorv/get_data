@@ -18,33 +18,40 @@
  *
  */
 
+#include "configuration.h"
+
 #include <iostream>
 #include <string>
 #include <sstream>
 #include <array>
 #include <boost/lexical_cast.hpp>
 #include <drs.h>
-#include <unistd.h>
 #include <stdlib.h>
 #include <getopt.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/errno.h>
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <errno.h>
 #include <signal.h>
-#include <zlib.h>
 #include <time.h>
 #include <vector>
-#include <assert.h>
+#include <cassert>
+#include <chrono>
 #include "textstream.h"
 #include "multifile.h"
 #include "yaml_binary.h"
 #include "binary.h"
 #include "detectorcontrol.h"
 
-using namespace std;
+using std::chrono::high_resolution_clock;
+using std::chrono::duration_cast;
+using std::chrono::time_point;
+using std::chrono::nanoseconds;
+
+enum output_format_t {
+    OF_MULTIFILE,
+    OF_MULTIFILE_BIN,
+    OF_TEXTSTREAM,
+    OF_BINARY,
+    OF_YAML_BINARY,
+    OF_ROOT
+};
 
 DRSBoard* board;
 
@@ -83,15 +90,12 @@ void terminate(int signum) {
 }
 
 int main(int argc, char **argv) {
-    // ENSURE that the header has the correct length...
-    assert(sizeof(struct dat_header) == 20);
     int optchar = -1;
     string output_directory("");
     string output_file("");
     string output_file_prefix("sample_");
+    output_format_t output_format = OF_TEXTSTREAM;
     unsigned int num_frames = 10;
-    bool binary_output = false;
-    int binary_version = 0;
     bool mode_2048 = false;
 //     bool auto_trigger = false;
     bool compress_data = false;
@@ -105,25 +109,23 @@ int main(int argc, char **argv) {
     float trigger_threshold = -0.05;
     bool use_control = false;
     string unix_socket("/tmp/detector_control.unix");
-    while((optchar = getopt(argc, argv, "12bBd:p:n:hvf:CH:l:aT:D:Us:t:c:")) != -1) {
+    while((optchar = getopt(argc, argv, "12bBd:p:n:hvo:f:CH:l:aT:D:Us:t:c:")) != -1) {
         if(optchar == '?') return 1;
         else if(optchar == 'h') {
             std::cout << "Usage: " << argv[0]
                       << " [-d OUTPUT_DIR] [-1 OUTPUT_FILE] [-p PREFIX] [-n NUM_FRAMES] [-H user_header] [-c channel] [-D DELAY] [-t TRIGGER_LEVEL(V)] [-T CH_NUM|ext] [-v12bBCh]\n\n"
                       << "Command line arguments\n"
-                      << " -1               1024-samples per frame (default)\n"
-                      << " -2               2048-samples per frame\n"
                       << " -a               Free-running mode (no trigger)\n"
-                      << " -B               binary output file; YAML header\n"
-                      << " -b               binary output file, version 1\n"
                       << " -c CH1[,CH2,...] Set one or more readout channel numbers (default = 1)\n"
                       << " -C               Enable zlib compression (only works with single text file).\n"
                       << " -d               Output directory (will create one file per frame!)\n"
-                      << " -f               File output (creates a single file for all frame, with meta information\n"
+                      << " -f FORMAT        File output (creates a single file for all frame, with meta information).\n"
+                      << "                  FORMAT is one of MULTIFILE, MULTIFILE_BIN, TEXT, BIN, YAML or ROOT.\n"
                       << " -H user_header   Add a line to the user header\n"
 //                       << " -k COMMENT_VARS Add commentary variables to output file (single-file ASCII only)
                       << " -l LVL           Set compression level (default 9). Only used if -c is set\n"
                       << " -n NUM_FRAMES    Number of frames to record\n"
+                      << " -o               Filename when using -f option.\n"
                       << " -p PREFIX        Filename prefix for directory output\n"
                       << " -v               Verbose output\n"
                       << " -t TrigTrheshV   Set the trigger threshold in Volts. Default = -0.05V\n"
@@ -137,8 +139,23 @@ int main(int argc, char **argv) {
                       << std::endl;
             return 1;
         }
-        else if(optchar == 'd') output_directory = optarg;
-        else if(optchar == 'f') { output_file = optarg; }
+        else if(optchar == 'd') {
+            output_directory = optarg;
+        }
+        else if(optchar == 'o') { output_file = optarg; }
+        else if(optchar == 'f') {
+            std::string format_str(optarg);
+            if(format_str == "MULTIFILE") output_format = OF_MULTIFILE;
+            else if(format_str == "MULTIFILE_BIN") output_format = OF_MULTIFILE_BIN;
+            else if(format_str == "TEXT") output_format = OF_TEXTSTREAM;
+            else if(format_str == "BIN") output_format = OF_BINARY;
+            else if(format_str == "YAML") output_format = OF_YAML_BINARY;
+            else if(format_str == "ROOT") output_format = OF_ROOT;
+            else {
+                std::cerr << argv[0] << ": Unknown output format " << optarg << std::endl;
+                return 1;
+            }
+        }
         else if(optchar == 'p') output_file_prefix = optarg;
         else if(optchar == 'a') auto_trigger = true;
         else if(optchar == 'C') compress_data = true;
@@ -149,14 +166,6 @@ int main(int argc, char **argv) {
             in >> num_frames;
         }
         else if(optchar == 'v') verbose = true;
-        else if(optchar == 'B') {
-            binary_output = true;
-            binary_version = 2;
-        }
-        else if(optchar == 'b') {
-            binary_output = true;
-            binary_version = 1;
-        }
         else if(optchar == '2') mode_2048 = true;
         else if(optchar == '1') mode_2048 = false;
         else if(optchar == 'H') user_header.push_back(optarg);
@@ -230,28 +239,6 @@ int main(int argc, char **argv) {
 
     if(!compress_data)
         compression_level = -1;
-    if(output_file.length() == 0) {
-        char default_filename[50];
-        time_t now = time(0);
-        strftime(default_filename, sizeof(default_filename)-1, "%Y-%m-%d_%H-%M",
-            gmtime(&now)
-        );
-        output_file = default_filename;
-        if(binary_output) output_file += ".dat";
-        else output_file += ".cdt";
-    }
-    bool single_file_output = (output_directory.length() == 0);
-
-    if(!single_file_output) {
-        if(output_directory[output_directory.length()-1] != '/')
-            output_directory += '/';
-        if(mkdir(output_directory.c_str(), S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH)) {
-            if(errno != EEXIST) {
-                std::cerr << "Cannot create output directory" << std::endl;
-                return 1;
-            }
-        }
-    }
 
     DRS* drs = new DRS();
     if(drs->GetNumberOfBoards() > 0 && verbose)
@@ -306,34 +293,40 @@ int main(int argc, char **argv) {
         std::cout << "1024 sample mode" << std::endl;
     }
     char buf[65536];
-    DataStream* datastream;
-    if(single_file_output) {
-        if(binary_output && binary_version == 2) {
-            if(do_multichannel_recording) {
-                std::cerr << argv[0] << ": Multi-channel recording does not work with binary output format :(" << std::endl;
-                return -1;
-            }
-            datastream = new YAMLBinaryStream;
-        }
-        else if(binary_output && binary_version == 1) {
-            if(do_multichannel_recording) {
-                std::cerr << argv[0] << ": Multi-channel recording does not work with binary output format :(" << std::endl;
-                return -1;
-            }
-            datastream = new BinaryStream;
-        }
-        else
-            datastream = new TextStream();
+    std::unique_ptr<DataStream> datastream;
+    bool binary_output = true;
+    if(output_format == OF_MULTIFILE) {
+        binary_output = false;
+        datastream.reset(new MultiFileStream);
+    } else if(output_format == OF_MULTIFILE_BIN) {
+        binary_output = true;
+        datastream.reset(new MultiFileStream);
+    } else if(output_format == OF_BINARY) {
+        binary_output = true;
+        datastream.reset(new BinaryStream);
+    } else if(output_format == OF_YAML_BINARY) {
+        binary_output = true;
+        datastream.reset(new YAMLBinaryStream);
+    } else if(output_format == OF_TEXTSTREAM) {
+        binary_output = compress_data;
+        datastream.reset(new TextStream);
+    } else if(output_format == OF_ROOT) {
+        datastream.reset(new RootOutput);
+//     } else if(output_format == OF_ROOT_TREE) {
+//         datastream.reset(new RootTree);
+    } else {
+        std::cerr << argv[0] << ": output format not implemented!" << std::endl;
+        return 1;
     }
-    else
-        datastream = new MultiFileStream();
     if(use_control)
         datastream->add_user_entry("T_soll_f", T_soll);
     datastream->init(output_directory, output_file, mode_2048? 2048:1024,
                      compression_level, auto_trigger, binary_output,
-                     trigger_delay_percent, ch_num);
+                     trigger_delay_percent, ch_num,
+                     argc, argv
+                    );
     datastream->write_header();
-    
+
     struct sigaction action;
     memset(&action, 0, sizeof(struct sigaction));
     action.sa_handler = terminate;
@@ -386,6 +379,7 @@ int main(int argc, char **argv) {
         float data_3[2048];
         float data_4[2048];
         std::array<float*, 4> data_array = {data_1, data_2, data_3, data_4};
+        auto start_time = high_resolution_clock::now();
         for(j=i; j<(i+subframe_set) && j<num_frames && !abort_measurement; j++) {
 //             std::cout << "Sample!" << std::endl;
             if(verbose) {
@@ -394,16 +388,17 @@ int main(int argc, char **argv) {
             }
             captureSample();
             if(abort_measurement) break;
+            auto record_time = duration_cast<nanoseconds>(high_resolution_clock::now() - start_time);
             board->GetTime(0, board->GetTriggerCell(0), time);
             board->GetWave(0, mode_2048? 0 : 0, data_1);
             if(do_multichannel_recording) {
                 board->GetWave(0, 2, data_2);
                 board->GetWave(0, 4, data_3);
                 board->GetWave(0, 6, data_4);
-                datastream->write_frame(time, data_array);
+                datastream->write_frame(record_time, time, data_array);
             } else {
                 board->GetWave(0, mode_2048? 0 : 0, data_1);
-                datastream->write_frame(time, data_1);
+                datastream->write_frame(record_time, time, data_1);
             }
             num_frames_written++;
         }
@@ -416,7 +411,7 @@ int main(int argc, char **argv) {
         }
     }
     datastream->finalize();
-    delete datastream;
+    datastream.release();
     if(verbose) {
         if(abort_measurement)
             std::cout << "\33[K\rAborted reading samples after "

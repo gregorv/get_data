@@ -68,8 +68,9 @@ public:
         string header = format_header();
         first_header_length = header.length();
         fwrite(header.c_str(), header.length(), 1, file);
+        return true;
     }
-    virtual bool write_frame(float* time, float* data) {
+    virtual bool write_frame(const nanoseconds& record_time, float* time, float* data) {
         if(frame_counter > 999999999)
             return false;
         frame_counter++;
@@ -77,12 +78,17 @@ public:
         fwrite(data, sizeof(float), frames_per_sample, file);
         return true;
     }
-    virtual bool write_frame(float* time, const std::array<float*, 4>& data)
+    virtual bool write_frame(const nanoseconds& record_time, float* time, const std::array<float*, 4>& data)
     {
         throw not_suppported_write("YAML binary with multi channel recording.");
+        return true;
     }
     virtual bool finalize() {
         return true;
+    }
+
+    virtual std::string get_file_extension() const {
+        return std::string(".ybin");
     }
 };
 

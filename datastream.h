@@ -24,8 +24,10 @@
 #include <map>
 #include <array>
 #include <string>
+#include <sstream>
+#include <chrono>
 
-using namespace std;
+using std::chrono::nanoseconds;
 
 class DataStream {
 protected:
@@ -35,13 +37,14 @@ protected:
     bool free_trigger;
     bool binary_output;
     float trigger_delay_percent;
-    map<string, string> user_header;
-    string filename;
-    string directory;
+    std::map<std::string, std::string> user_header;
+    std::string filename;
+    std::string directory;
     std::array<int, 4> ch_config;
-    
+    std::string command_line;
+
     virtual bool init_stream() = 0;
-    
+
 public:
 
     class not_suppported_write : std::exception
@@ -78,11 +81,18 @@ public:
     /**
     compression_level == -1: No compression
     */
-    virtual bool init(string p_directory, string p_filename, int p_frames_per_sample,
+    virtual bool init(std::string p_directory, std::string p_filename, int p_frames_per_sample,
                       int p_compression_level, bool p_free_trigger, bool p_binary_output, float p_trigger_delay_percent,
-                      std::array<int, 4> p_ch_config
+                      std::array<int, 4> p_ch_config, int argc, char** argv
                      ) {
         filename = p_filename;
+        if(filename.length() == 0) {
+            char default_filename[50];
+            time_t now = time(0);
+            strftime(default_filename, sizeof(default_filename)-1, "%Y-%m-%d_%H-%M", gmtime(&now));
+            filename = default_filename;
+            filename += get_file_extension();
+        }
         directory = p_directory;
         frames_per_sample = p_frames_per_sample;
         compression_level = p_compression_level;
@@ -91,30 +101,37 @@ public:
         binary_output = p_binary_output;
         trigger_delay_percent = p_trigger_delay_percent;
         ch_config = p_ch_config;
+        std::ostringstream cmd_stream;
+        cmd_stream << argv[0];
+        for(int i=1; i<argc; i++) {
+            cmd_stream << " " << argv[i];
+        }
+        command_line = cmd_stream.str();
         return init_stream();
     }
-    virtual void add_user_entry(string key, string value) {
+    virtual void add_user_entry(std::string key, std::string value) {
         user_header[key] = value;
     }
-    virtual void add_user_entry(string key, int value) {
-        ostringstream oss;
+    virtual void add_user_entry(std::string key, int value) {
+        std::ostringstream oss;
         oss << value;
         add_user_entry(key, oss.str());
     }
-    virtual void add_user_entry(string key, bool value) {
-        ostringstream oss;
+    virtual void add_user_entry(std::string key, bool value) {
+        std::ostringstream oss;
         oss << value;
         add_user_entry(key, oss.str());
     }
-    virtual void add_user_entry(string key, float value) {
-        ostringstream oss;
+    virtual void add_user_entry(std::string key, float value) {
+        std::ostringstream oss;
         oss << value;
         add_user_entry(key, oss.str());
     }
     virtual bool write_header() = 0;
-    virtual bool write_frame(float* time, float* data) = 0;
-    virtual bool write_frame(float* time, const std::array<float*, 4>& data) = 0;
+    virtual bool write_frame(const nanoseconds& record_time, float* time, float* data) = 0;
+    virtual bool write_frame(const nanoseconds& record_time, float* time, const std::array<float*, 4>& data) = 0;
     virtual bool finalize() = 0;
+    virtual std::string get_file_extension() const = 0;
 };
 
 #endif

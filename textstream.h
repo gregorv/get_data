@@ -27,8 +27,6 @@
 #include <zlib.h>
 #include <string>
 
-using namespace std;
-
 class TextStream : public DataStream {
 private:
     FILE* file;
@@ -36,7 +34,7 @@ private:
     int frame_counter;
     std::string write_fmt;
 
-    void write_raw(string data, bool uncompressed) {
+    void write_raw(std::string data, bool uncompressed) {
         if(compress_data) {
             if(uncompressed) {
                 gzsetparams(zfile, 0, Z_DEFAULT_STRATEGY);
@@ -80,30 +78,41 @@ public:
         else if(file) fclose(file);
     }
     virtual bool write_header() {
-        string plaintext_user_header;
-        for(map<string, string>::iterator it = user_header.begin(); it != user_header.end(); it++) {
-            plaintext_user_header += "# ";
-            plaintext_user_header += it->first;
-            plaintext_user_header += " = ";
-            plaintext_user_header += it->second;
-            plaintext_user_header += "\n";
+        std::ostringstream plaintext_user_header;
+        for(auto it: user_header) {
+            plaintext_user_header << "# " << it.first << " = " << it.second << "\n";
         }
+        std::ostringstream ss;
+        ss << ch_config[0];
+        for(size_t i=1; i < 4; i++) {
+            if(ch_config[i] == -1) {
+                break;
+            }
+            ss << "," << ch_config[i]+1;
+        }
+        char record_date[50];
+        time_t now = std::time(0);
+        std::strftime(record_date, sizeof(record_date)-1, "%Y-%m-%d_%H-%M", gmtime(&now));
         char buf[65535];
         sprintf(buf,
             "##METATEXT\n"
-            "# version_i = 1\n"
+            "# version_i = 2\n"
             "# compressed_b = %i\n"
             "# frames_per_sample_i = %i\n"
             "# free_trigger_b = %i\n"
+            "# channel_config_s = %s\n"
+            "# cmd line_s = %s\n"
+            "# record_start_date_s = %s\n"
             "##USERHEADER\n%s",
 //                     "# num_frames_i = %i\n
-            compress_data, frames_per_sample, free_trigger, plaintext_user_header.c_str());
+            compress_data, frames_per_sample, free_trigger,
+            ss.str().c_str(), command_line.c_str(), record_date, plaintext_user_header.str().c_str());
         write_raw(buf, true);
         return true;
     }
-    virtual bool write_frame(float* time, float* data) {
+    virtual bool write_frame(const nanoseconds& record_time, float* time, float* data) {
         char buf[65535];
-        size_t len = sprintf(buf, "\n\n##FRAME:%i\n", frame_counter);
+        size_t len = sprintf(buf, "\n\n##FRAME:%i\n# record time: %li ns", frame_counter, record_time.count());
         for(int i=0; i<frames_per_sample; i++) {
             len += sprintf(buf+len, "%f %f\n", time[i], data[i]);
         }
@@ -111,9 +120,9 @@ public:
         frame_counter++;
         return true;
     }
-    virtual bool write_frame(float* time, const std::array<float*, 4>& data) {
+    virtual bool write_frame(const nanoseconds& record_time, float* time, const std::array<float*, 4>& data) {
         char buf[65535];
-        size_t len = sprintf(buf, "\n\n##FRAME:%i\n", frame_counter);
+        size_t len = sprintf(buf, "\n\n##FRAME:%i\n# record time: %li ns", frame_counter, record_time.count());
         for(int i=0; i<frames_per_sample; i++) {
             len += sprintf(buf+len, write_fmt.c_str(), time[i],
                            ch_config[0] != -1? data[ch_config[0]][i] : 0.0f,
@@ -128,6 +137,13 @@ public:
     }
     virtual bool finalize() {
         return true;
+    }
+
+    virtual std::string get_file_extension() const {
+        if(compress_data) {
+            return std::string(".csv.gz");
+        }
+        return std::string(".csv");
     }
 };
 

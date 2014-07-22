@@ -43,11 +43,12 @@ struct dat_header {
     uint16_t data_offset;
     char reserved2[2];
 };
+static_assert(sizeof(dat_header) == 20, "dat_header struct has unexpected size on this platform!");
 
 class BinaryStream : public DataStream {
 protected:
     FILE* file;
-    int frame_counter;
+    unsigned int frame_counter;
     dat_header header;
 
     virtual bool init_stream() {
@@ -89,7 +90,7 @@ public:
 	return true;
     }
 
-    virtual bool write_frame(float* time, float* data) {
+    virtual bool write_frame(const nanoseconds& record_time, float* time, float* data) {
         if(frame_counter == 4294967295UL)
             return false;
         frame_counter++;
@@ -99,9 +100,9 @@ public:
         return true;
     }
 
-    virtual bool write_frame(float* time, const std::array<float*, 4>& data)
+    virtual bool write_frame(const nanoseconds& record_time, float* time, const std::array<float*, 4>& data)
     {
-        throw not_suppported_write("YAML binary with multi channel recording.");
+        throw not_suppported_write("Binary format with multi channel recording.");
     }
 
     virtual bool finalize() {
@@ -110,6 +111,10 @@ public:
 	fwrite(&header, sizeof(header), 1, file);
 	fflush(file);
         return true;
+    }
+
+    virtual std::string get_file_extension() const {
+        return std::string(".cdt");
     }
 };
 

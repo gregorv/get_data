@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
 
 using namespace std;
 
@@ -32,6 +33,17 @@ class MultiFileStream : public DataStream {
 protected:
     int frame_counter;
     virtual bool init_stream() {
+        if(directory[directory.length()-1] != '/') {
+            directory += '/';
+        }
+        if(mkdir(directory.c_str(), S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH)) {
+            if(errno != EEXIST) {
+                std::cerr << "Cannot create output directory" << std::endl;
+                return false;
+            } else {
+                std::cout << "Overwriting data in output directory!" << std::endl;
+            }
+        }
         return true;
     }
 
@@ -41,7 +53,7 @@ public:
     virtual bool write_header() {
         return true;
     }
-    virtual bool write_frame(float* time, float* data) {
+    virtual bool write_frame(const nanoseconds& record_time, float* time, float* data) {
         if(frame_counter >= 1000000)
             return false;
         if(binary_output) {
@@ -58,6 +70,8 @@ public:
             sprintf(fname, "%s%s_%06i.csv", directory.c_str(), filename.c_str(), frame_counter);
             FILE* f = fopen(fname, "w");
             fwrite("#TXT\n", strlen("#TXT\n"), 1, f);
+            fprintf(f, "# cmd: %s\n# record timestamp: %li ns\n",
+                    command_line.c_str(), record_time.count());
             for(int i=0; i<frames_per_sample; i++) {
                 fprintf(f, "%f", time[i]);
                 fprintf(f, " %f", data[i]);
@@ -68,7 +82,7 @@ public:
         frame_counter++;
         return true;
     }
-    virtual bool write_frame(float* time, const std::array<float*, 4>& data) {
+    virtual bool write_frame(const nanoseconds& record_time, float* time, const std::array<float*, 4>& data) {
         if(frame_counter >= 1000000)
             return false;
         if(binary_output) {
@@ -78,7 +92,9 @@ public:
             char fname[1024];
             sprintf(fname, "%s%s_%06i.csv", directory.c_str(), filename.c_str(), frame_counter);
             FILE* f = fopen(fname, "w");
-            fwrite("#TXT\n", strlen("#TXT\n"), 1, f);
+            fwrite("#TXT\n", 5, 1, f);
+            fprintf(f, "# cmd: %s\n# record timestamp: %li ns\n",
+                    command_line.c_str(), record_time.count());
             for(int i=0; i<frames_per_sample; i++) {
                 fprintf(f, "%f", time[i]);
                 for(auto ch: ch_config) {
@@ -95,6 +111,10 @@ public:
     }
     virtual bool finalize() {
         return true;
+    }
+
+    virtual std::string get_file_extension() const {
+        return std::string(".unused");
     }
 };
 
