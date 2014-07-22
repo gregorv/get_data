@@ -92,7 +92,7 @@ public:
         }
         char record_date[50];
         time_t now = std::time(0);
-        std::strftime(record_date, sizeof(record_date)-1, "%Y-%m-%d_%H-%M", gmtime(&now));
+        std::strftime(record_date, sizeof(record_date)-1, "%Y-%m-%d, %H-%M-%S", gmtime(&now));
         char buf[65535];
         sprintf(buf,
             "##METATEXT\n"
@@ -112,7 +112,8 @@ public:
     }
     virtual bool write_frame(const nanoseconds& record_time, float* time, float* data) {
         char buf[65535];
-        size_t len = sprintf(buf, "\n\n##FRAME:%i\n# record time: %li ns", frame_counter, record_time.count());
+        size_t len = sprintf(buf, "\n\n##FRAME:%i\n# record time: %li us\n",
+                             frame_counter, record_time.count() / 1000);
         for(int i=0; i<frames_per_sample; i++) {
             len += sprintf(buf+len, "%f %f\n", time[i], data[i]);
         }
@@ -122,7 +123,8 @@ public:
     }
     virtual bool write_frame(const nanoseconds& record_time, float* time, const std::array<float*, 4>& data) {
         char buf[65535];
-        size_t len = sprintf(buf, "\n\n##FRAME:%i\n# record time: %li ns", frame_counter, record_time.count());
+        size_t len = sprintf(buf, "\n\n##FRAME:%i\n# record time: %li us\n",
+                             frame_counter, record_time.count() / 1000);
         for(int i=0; i<frames_per_sample; i++) {
             len += sprintf(buf+len, write_fmt.c_str(), time[i],
                            ch_config[0] != -1? data[ch_config[0]][i] : 0.0f,
