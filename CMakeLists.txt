@@ -3,7 +3,6 @@ cmake_minimum_required(VERSION 2.8)
 project(get_data)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules/")
-set(CMAKE_CXX_FLAGS "--std=c++11")
 set(ENABLE_PROFILING OFF CACHE BOOL "Enable gprof compile flags")
 
 find_package(ROOT)
@@ -18,6 +17,11 @@ endif(${ROOT_FOUND})
 if(${ENABLE_PROFILING})
    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -p")
 endif(${ENABLE_PROFILING})
+
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --std=c++11")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wall")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/configuration.h.in ${CMAKE_CURRENT_BINARY_DIR}/configuration.h)
 
