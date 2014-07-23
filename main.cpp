@@ -98,7 +98,6 @@ int main(int argc, char **argv) {
     string output_file("");
     output_format_t output_format = OF_TEXTSTREAM;
     unsigned int num_frames = 10;
-    bool mode_2048 = false;
 //     bool auto_trigger = false;
     bool compress_data = false;
     int compression_level = 9;
@@ -113,7 +112,7 @@ int main(int argc, char **argv) {
     bool trigger_edge_negative = true;
     bool use_control = false;
     string unix_socket("/tmp/detector_control.unix");
-    while((optchar = getopt(argc, argv, "12bBd:p:n:ho:f:F:PCH:l:aT:D:Us:t:c:v")) != -1) {
+    while((optchar = getopt(argc, argv, "bBd:p:n:ho:f:F:PCH:l:aT:D:Us:t:c:v")) != -1) {
         if(optchar == '?') return 1;
         else if(optchar == 'h') {
             std::cout << "Usage: " << argv[0]
@@ -181,8 +180,6 @@ int main(int argc, char **argv) {
             in >> num_frames;
         }
         else if(optchar == 'v') std::cout << "Note: verbose mode active by default! Changes on console status display comming in future versions! :-)" << std::endl;
-        else if(optchar == '2') mode_2048 = true;
-        else if(optchar == '1') mode_2048 = false;
         else if(optchar == 'H') user_header.push_back(optarg);
         else if(optchar == 'D') trigger_delay_percent = atof(optarg);
         else if(optchar == 'T') {
@@ -309,17 +306,6 @@ int main(int argc, char **argv) {
         b->SetTriggerLevel(trigger_threshold, trigger_edge_negative); // (V), pos. edge == false
     }
 
-    // 2048 sample mode
-    if(mode_2048) {
-        b->SetChannelConfig(0, 1, 4);
-        if(verbose) {
-            std::cout << "2048 sample mode, channel cascading " << board->GetChannelCascading() << std::endl;
-        }
-        std::cerr << "Warning: 2048 sample mode won't work unless your DRS4 Eval Board Hardware is configured to support channel cascading!" << std::endl;
-    }
-    else if(verbose) {
-        std::cout << "1024 sample mode" << std::endl;
-    }
     char buf[65536];
     std::unique_ptr<DataStream> datastream;
     bool binary_output = true;
@@ -350,7 +336,7 @@ int main(int argc, char **argv) {
     }
     if(use_control)
         datastream->add_user_entry("T_soll_f", T_soll);
-    datastream->init(output_directory, output_file, mode_2048? 2048:1024,
+    datastream->init(output_directory, output_file, 1024,
                      compression_level, auto_trigger, binary_output,
                      trigger_delay_percent, ch_num,
                      argc, argv
@@ -365,7 +351,6 @@ int main(int argc, char **argv) {
 
     if(verbose) std::cout << "Sampling Rate " << b->GetFrequency() << " GSp/s" << std::endl;
     if(verbose) std::cout << "Record " << num_frames << " frames" << std::endl;
-    int num_samples = mode_2048? 2048 : 1024;
     uint32_t num_frames_written = 0;
     bool temperature_stable = false;
     int subframe_set = 500;
@@ -419,7 +404,7 @@ int main(int argc, char **argv) {
             if(abort_measurement) break;
             auto record_time = duration_cast<nanoseconds>(high_resolution_clock::now() - start_time);
             board->GetTime(0, board->GetTriggerCell(0), time);
-            board->GetWave(0, mode_2048? 0 : 0, data_1);
+            board->GetWave(0, 0, data_1);
             if(do_multichannel_recording) {
                 board->GetWave(0, 2, data_2);
                 board->GetWave(0, 4, data_3);
@@ -429,7 +414,6 @@ int main(int argc, char **argv) {
                     break;
                 }
             } else {
-                board->GetWave(0, mode_2048? 0 : 0, data_1);
                 if(!datastream->write_frame(record_time, time, data_1)) {
                     abort_measurement = true;
                     break;
