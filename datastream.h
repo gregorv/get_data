@@ -55,7 +55,7 @@ public:
         {
         }
 
-        virtual const char* what() noexcept
+        virtual const char* what() const noexcept
         {
             return m_what.c_str();
         }

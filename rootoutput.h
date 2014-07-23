@@ -52,7 +52,6 @@ private:
     std::shared_ptr<TFile> m_file;
     std::shared_ptr<TTree> m_tree;
     std::ostringstream m_recordTimestampsText;
-    size_t m_frame_counter;
     uint64_t m_record_timestamp;
     TGraph* m_data_graphs[4];
 };

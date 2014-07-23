@@ -60,7 +60,7 @@ std::string DetectorControl::recv_line()
 }
 
 DetectorControl::DetectorControl(std::string sfile)
-: sock(0), stream(0), socket_file(sfile)
+: sock(0), stream(0), socket_file(sfile), m_T_soll(300)
 {
 }
 DetectorControl::~DetectorControl()
@@ -95,6 +95,7 @@ void DetectorControl::disconnect_control()
 
 void DetectorControl::setTsoll(float T_soll)
 {
+    m_T_soll = T_soll;
     std::stringstream line;
     line << "T_soll=" << T_soll << "\n";
     send_msg(line.str());
@@ -102,6 +103,7 @@ void DetectorControl::setTsoll(float T_soll)
 
 float DetectorControl::getTsoll()
 {
+    return m_T_soll;
 }
 
 float DetectorControl::getTist()

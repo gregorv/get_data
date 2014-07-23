@@ -34,6 +34,7 @@ private:
 
     bool send_msg(std::string message);
     std::string recv_line();
+    float m_T_soll;
 
 public:
     DetectorControl(std::string sfile);

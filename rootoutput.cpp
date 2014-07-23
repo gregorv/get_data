@@ -25,7 +25,7 @@
 #include <TObjString.h>
 
 RootOutput::RootOutput()
- : m_frame_counter(0), m_data_graphs{nullptr, nullptr, nullptr, nullptr}
+ : m_data_graphs{nullptr, nullptr, nullptr, nullptr}
 {
     for(size_t i=0; i<4; i++) {
         m_data_graphs[i] = new TGraph;
@@ -59,8 +59,8 @@ bool RootOutput::write_header()
 
 bool RootOutput::write_frame(const nanoseconds& record_time, float* time, float* data)
 {
-    std::array<float*, 4> data_array = {data, nullptr, nullptr, nullptr};
-    std::array< int, 4> my_ch_config = {0, -1, -1, -1};
+    std::array<float*, 4> data_array{ {data, nullptr, nullptr, nullptr} };
+    std::array< int, 4> my_ch_config{ {0, -1, -1, -1} };
     return write_frame(record_time, time, data_array, my_ch_config);
 }
 
@@ -83,7 +83,7 @@ bool RootOutput::write_frame(const nanoseconds& record_time, float* time,
         }
         std::ostringstream col_name;
         col_name << "Channel " << ch;
-        for(size_t i; i<frames_per_sample; i++) {
+        for(size_t i = 0; i<frames_per_sample; i++) {
             m_data_graphs[ch]->SetPoint(i, time[i], data[ch][i]);
         }
     }

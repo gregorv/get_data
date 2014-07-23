@@ -104,7 +104,7 @@ int main(int argc, char **argv) {
     float trigger_delay_percent = 100;
     vector<string> user_header;
     bool do_multichannel_recording = false;
-    std::array<int, 4> ch_num = { 0, -1, -1, -1};
+    std::array<int, 4> ch_num{ { 0, -1, -1, -1} };
     int trigger_ch_num = 0;
     float T_soll = 0;
     float trigger_threshold = -0.05;
@@ -187,10 +187,11 @@ int main(int argc, char **argv) {
                 trigger_ch_num = 4; // external
             }
             else {
-                trigger_ch_num = strtol(optarg, 0, 10);
-                if(((trigger_ch_num == LLONG_MIN || trigger_ch_num == LLONG_MAX) && errno == ERANGE) ||
-                   (trigger_ch_num == 0 && errno == EINVAL)) {
-                    std::cerr << argv[0] << ": Invalid trigger channel number '" << optarg << "'!" << std::endl;
+                try {
+                    trigger_ch_num = boost::lexical_cast<int>(optarg);
+                } catch(const boost::bad_lexical_cast& e) {
+                    std::cerr << argv[0] << ": Invalid trigger channel number '"
+                              << optarg << "'!" << std::endl;
                     return -1;
                 }
                 trigger_ch_num -= 1; // we want "Channel 1" to have the internal number 0
@@ -306,7 +307,6 @@ int main(int argc, char **argv) {
         b->SetTriggerLevel(trigger_threshold, trigger_edge_negative); // (V), pos. edge == false
     }
 
-    char buf[65536];
     std::unique_ptr<DataStream> datastream;
     bool binary_output = true;
     if(output_format == OF_MULTIFILE) {
@@ -354,6 +354,13 @@ int main(int argc, char **argv) {
     uint32_t num_frames_written = 0;
     bool temperature_stable = false;
     int subframe_set = 500;
+    float time[2048];
+    float data_1[2048];
+    float data_2[2048];
+    float data_3[2048];
+    float data_4[2048];
+    std::array<float*, 4> data_array{ {data_1, data_2, data_3, data_4} };
+    auto start_time = high_resolution_clock::now();
     for(unsigned int i=0; i<num_frames && !abort_measurement; i++) {
         if(temperature_stable) {
             control->connect_control();
@@ -387,13 +394,6 @@ int main(int argc, char **argv) {
         }
         unsigned int j=0;
 
-        float time[2048];
-        float data_1[2048];
-        float data_2[2048];
-        float data_3[2048];
-        float data_4[2048];
-        std::array<float*, 4> data_array = {data_1, data_2, data_3, data_4};
-        auto start_time = high_resolution_clock::now();
         for(j=i; j<(i+subframe_set) && j<num_frames && !abort_measurement; j++) {
 //             std::cout << "Sample!" << std::endl;
             if(verbose) {
