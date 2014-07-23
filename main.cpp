@@ -361,6 +361,8 @@ int main(int argc, char **argv) {
     float data_4[2048];
     std::array<float*, 4> data_array{ {data_1, data_2, data_3, data_4} };
     auto start_time = high_resolution_clock::now();
+    nanoseconds previous_time;
+    float averaged_sample_frequency = 0.0;
     for(unsigned int i=0; i<num_frames && !abort_measurement; i++) {
         if(temperature_stable) {
             control->connect_control();
@@ -395,14 +397,16 @@ int main(int argc, char **argv) {
         unsigned int j=0;
 
         for(j=i; j<(i+subframe_set) && j<num_frames && !abort_measurement; j++) {
+            auto record_time = duration_cast<nanoseconds>(high_resolution_clock::now() - start_time);
 //             std::cout << "Sample!" << std::endl;
             if(verbose) {
+                averaged_sample_frequency += ((10.0/static_cast<double>((record_time-previous_time).count())*1e9) - averaged_sample_frequency)*0.001f;
+                previous_time = record_time;
                 if(j % 10 == 0)
-                    std::cout << "\33[2K\rSample " << j << " of " << num_frames << std::flush;
+                    std::cout << "\33[2K\rSample " << j << " of " << num_frames << ", frequency " << averaged_sample_frequency << "Hz" << std::flush;
             }
             captureSample();
             if(abort_measurement) break;
-            auto record_time = duration_cast<nanoseconds>(high_resolution_clock::now() - start_time);
             board->GetTime(0, board->GetTriggerCell(0), time);
             board->GetWave(0, 0, data_1);
             if(do_multichannel_recording) {
@@ -435,8 +439,11 @@ int main(int argc, char **argv) {
         if(abort_measurement)
             std::cout << "\33[K\rAborted reading samples after "
                       << num_frames_written << " frames" << std::endl;
-        else
-            std::cout << "\33[2K\rDone reading samples" << std::endl;
+        else {
+            auto total_time = duration_cast<nanoseconds>(high_resolution_clock::now() - start_time);
+            double frequency = static_cast<double>(num_frames_written) / static_cast<double>(total_time.count())*1e9;
+            std::cout << "\33[2K\rDone reading samples, average frequency " << frequency << "Hz" << std::endl;
+        }
     }
 
     delete drs;
