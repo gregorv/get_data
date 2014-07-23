@@ -4,6 +4,7 @@ project(get_data)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules/")
 set(CMAKE_CXX_FLAGS "--std=c++11")
+set(ENABLE_PROFILING OFF CACHE BOOL "Enable gprof compile flags")
 
 find_package(ROOT)
 find_package(LibUSB REQUIRED)
@@ -13,6 +14,10 @@ set(GET_DATA_SRC main.cpp detectorcontrol.cpp)
 if(${ROOT_FOUND})
     set(GET_DATA_SRC ${GET_DATA_SRC} rootoutput.cpp)
 endif(${ROOT_FOUND})
+
+if(${ENABLE_PROFILING})
+   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -p")
+endif(${ENABLE_PROFILING})
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/configuration.h.in ${CMAKE_CURRENT_BINARY_DIR}/configuration.h)
 
