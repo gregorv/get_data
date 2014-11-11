@@ -8,6 +8,7 @@ set(ENABLE_PROFILING OFF CACHE BOOL "Enable gprof compile flags")
 find_package(ROOT)
 find_package(LibUSB REQUIRED)
 find_package(ZLIB REQUIRED)
+find_package(Boost REQUIRED)
 
 set(GET_DATA_SRC main.cpp detectorcontrol.cpp)
 if(${ROOT_FOUND})
@@ -34,10 +35,14 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/configuration.h.in ${CMAKE_CURRENT_BI
 include_directories(${LIBUSB_INCLUDE_DIR}
                     ${ROOT_INCLUDE_DIR}
                     ${ZLIB_INCLUDE_DIR}
+                    ${Boost_INCLUDE_DIR}
                     ${CMAKE_CURRENT_BINARY_DIR})
 link_directories(${ROOT_LIBRARY_PATH} ${LIBUSB_LIBRARY_PATH})
 add_executable(get_data ${GET_DATA_SRC})
 set_target_properties(get_data PROPERTIES COMPILE_FLAGS "-DHAVE_USB -DHAVE_LIBUSB10 -g")
-target_link_libraries(get_data drs ${ZLIB_LIBRARIES} ${ROOT_LIBRARIES} ${LIBUSB_LIBRARIES})
+target_link_libraries(get_data drs ${ZLIB_LIBRARIES}
+                                   ${ROOT_LIBRARIES}
+                                   ${LIBUSB_LIBRARIES}
+                                   ${BOOST_LIBRARIES})
 
 install(TARGETS get_data RUNTIME DESTINATION bin)

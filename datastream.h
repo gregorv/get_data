@@ -26,6 +26,7 @@
 #include <string>
 #include <sstream>
 #include <chrono>
+#include <boost/algorithm/string.hpp>
 
 using std::chrono::nanoseconds;
 
@@ -91,6 +92,8 @@ public:
             time_t now = time(0);
             strftime(default_filename, sizeof(default_filename)-1, "%Y-%m-%d_%H-%M-%S", gmtime(&now));
             filename = default_filename;
+            filename += get_file_extension();
+        } else if(!boost::algorithm::ends_with(filename, get_file_extension())) {
             filename += get_file_extension();
         }
         directory = p_directory;
