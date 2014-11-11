@@ -19,3 +19,4 @@
  */
 
 #cmakedefine ROOT_FOUND 1
+#define VERSION_STRING "${GITDESC_VERSION_STRING}"

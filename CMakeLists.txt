@@ -23,6 +23,12 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --std=c++11")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wall")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
 
+execute_process(COMMAND git describe
+                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                OUTPUT_VARIABLE GITDESC_VERSION_STRING
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+                )
+
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/configuration.h.in ${CMAKE_CURRENT_BINARY_DIR}/configuration.h)
 
 include_directories(${LIBUSB_INCLUDE_DIR}

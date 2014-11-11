@@ -115,8 +115,8 @@ int main(int argc, char **argv) {
     while((optchar = getopt(argc, argv, "bBd:p:n:ho:f:F:PCH:l:aT:D:Us:t:c:v")) != -1) {
         if(optchar == '?') return 1;
         else if(optchar == 'h') {
-            std::cout << "Usage: " << argv[0]
-                      << " [OPTIONS]\n\n"
+            std::cout << "get_data - DRS4 acquisition " << VERSION_STRING << "\n\n"
+                      << "Usage: " << argv[0] << " [OPTIONS]\n\n"
                       << "Command line arguments\n"
                       << " -a               Free-running mode (no trigger)\n"
                       << " -c CH1[,CH2,...] Set one or more readout channel numbers (default = 1)\n"
@@ -140,6 +140,7 @@ int main(int argc, char **argv) {
                       << " -s T_soll        Enable temperature stabilized measurement.\n"
                       << "                  Value in Kelvin if suffixed by K, other wise\n"
                       << "                  it is interpreted as degree Celsius\n"
+                      << " -v               Show version information\n"
 #ifndef ROOT_FOUND
                       << "\nThis version of get_data was compiled without ROOT support!\n"
 #endif
@@ -179,7 +180,20 @@ int main(int argc, char **argv) {
             istringstream in(optarg);
             in >> num_frames;
         }
-        else if(optchar == 'v') std::cout << "Note: verbose mode active by default! Changes on console status display comming in future versions! :-)" << std::endl;
+        else if(optchar == 'v') {
+            std::cout << "get_data - DRS4 acquisition " << VERSION_STRING << "\n\n"
+            << " This program is free software: you can redistribute it and/or modify\n"
+            << " it under the terms of the GNU General Public License as published by\n"
+            << " the Free Software Foundation, either version 3 of the License, or\n"
+            << " (at your option) any later version.\n\n"
+            << " (C) 2014 Gregor Vollmer & contributors.\n\n";
+#ifdef ROOT_FOUND
+            std::cout << "compiled with ROOT support! :-)" << std::endl;
+#else
+            std::cout << "compiled without ROOT support! :-(" << std::endl;
+#endif
+            return 0;
+        }
         else if(optchar == 'H') user_header.push_back(optarg);
         else if(optchar == 'D') trigger_delay_percent = atof(optarg);
         else if(optchar == 'T') {
